@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # uv.lock records the Alibaba mirror as its registry; point CI at the
+      # same index so `uv sync --locked` resolves without contacting pypi.org.
+      UV_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Sync locked dependencies
+        run: uv sync --locked
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Pytest
+        run: uv run pytest -q
+
+  docs:
+    # Documentation & release validation (the docs-validation job of the
+    # runtime-docs-release task): link/anchor integrity of README.md and
+    # docs/*.md, CLI drift (--version/--help surface), the mock stdio
+    # smoke flow, the HTTP health smoke, and a docs secret scan.  The
+    # executable parts run as pytest tests so they are covered by the
+    # full matrix in the `test` job; the bash steps here make the
+    # release contract explicit and fast to read in CI logs.
+    runs-on: ubuntu-latest
+    env:
+      UV_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync locked dependencies
+        run: uv sync --locked
+
+      - name: Markdown link check (README.md + docs/*.md)
+        run: uv run pytest -q tests/integration/test_docs_examples.py -k links
+
+      - name: CLI drift check (version + help surface)
+        run: |
+          set -euo pipefail
+          uv run cmdb-mcp --version
+          uv run cmdb-mcp --help
+          uv run cmdb-mcp stdio --help
+          uv run cmdb-mcp http --help
+          uv run pytest -q tests/integration/test_docs_examples.py -k "version_matches_sources"
+
+      - name: Mock stdio smoke (initialize + tools/list)
+        run: uv run pytest -q tests/integration/test_docs_examples.py -k stdio_smoke
+
+      - name: Mock HTTP health smoke (/healthz + /readyz)
+        run: uv run pytest -q tests/integration/test_docs_examples.py -k health
+
+      - name: Secret scan over docs
+        run: uv run pytest -q tests/integration/test_docs_examples.py -k secrets
