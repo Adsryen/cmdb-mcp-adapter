@@ -1,0 +1,28 @@
+# VCS
+.git
+.gitattributes
+
+# Python caches / virtualenvs (never needed in the image context)
+.venv
+**/__pycache__
+**/*.pyc
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# Local dev / agent state — not part of the deployable artifact
+.trellis
+.agents
+.claude
+.codex
+.env
+.env.local
+
+# Tests are not needed at runtime; keep the build context lean
+tests
+
+# Docs are not needed at runtime either
+docs
+
+# The image is built from the hatch wheel target, which packages
+# src/cmdb_mcp_adapter explicitly; nothing else is required.

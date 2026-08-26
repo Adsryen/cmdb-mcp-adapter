@@ -1,0 +1,68 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.coverage
+coverage.xml
+htmlcov/
+
+# Python environments and packaging outputs
+.venv/
+venv/
+env/
+ENV/
+dist/
+build/
+*.egg-info/
+pip-wheel-metadata/
+
+# JavaScript tooling used by optional documentation or tooling
+node_modules/
+.npm/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Logs and local runtime state
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# ide
+.trae/
+
+# Trellis, agent, and project instructions are repository context.
+# Their tool-specific runtime files are ignored by the nested rules where
+# applicable; do not ignore the entire directories or task/spec history.
+.trellis/
+.agents/
+.project/
+.task/
+.spec/
+.codex/
+.claude/
+
+# Local isolated VeOps test sandbox (pulled snapshot from intranet VeOps host)
+veops-local-test/

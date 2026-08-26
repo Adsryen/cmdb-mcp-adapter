@@ -1,0 +1,33 @@
+# Normalize text files to LF on every platform. This keeps Windows/Linux
+# checkouts from producing full-file diffs when only line endings changed.
+* text=auto eol=lf
+
+# Common binary formats must never be rewritten as text.
+*.7z binary
+*.dll binary
+*.doc binary
+*.docx binary
+*.exe binary
+*.gif binary
+*.ico binary
+*.jar binary
+*.jpeg binary
+*.jpg binary
+*.pdf binary
+*.png binary
+*.so binary
+*.tar binary
+*.gz binary
+*.webp binary
+*.wasm binary
+*.zip binary
+
+# Trellis: append-only developer journals should merge cleanly across
+# parallel sessions/worktrees — each session only appends a new block, so
+# there is nothing to actually conflict on.
+#
+# Do NOT add a rule for workspace/*/index.md here — it is fully regenerated
+# every session, so a real conflict there is expected and safe to resolve by
+# picking either side (task state lives in task.json, not index.md). See
+# .trellis/spec/cli/backend/directory-structure.md for details.
+.trellis/workspace/*/journal-*.md merge=union
