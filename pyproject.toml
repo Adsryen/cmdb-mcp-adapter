@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cmdb-mcp-adapter"
+version = "0.2.2"
+description = "CMDB MCP adapter exposing the VeOps CMDB through the Model Context Protocol."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.29.0,<2.0.0",
+    "uvicorn>=0.34.0",
+]
+
+[project.scripts]
+cmdb-mcp = "cmdb_mcp_adapter.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cmdb_mcp_adapter"]
+
+[tool.uv]
+# The committed uv.lock records the Alibaba mirror as its package registry
+# (pypi.org is unreachable from the development environment). Anyone
+# running uv against this lockfile must use the same mirror, e.g.:
+#   uv sync --locked --index-url https://mirrors.aliyun.com/pypi/simple/
+# CI sets the equivalent UV_INDEX_URL in .github/workflows/ci.yml.
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# Trellis/agent hook scripts are tooling, not product code; keep linting
+# scoped to the package, tests, and CI workflow.
+extend-exclude = [".trellis", ".claude", ".codex", ".agents"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+mypy_path = "src"
+packages = ["cmdb_mcp_adapter"]
+strict = true
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "optin: developer opt-in tests that require external state (real CMDB credentials via environment); never run in CI",
+]

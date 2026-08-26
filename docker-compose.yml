@@ -1,0 +1,53 @@
+# CMDB MCP adapter — single-service deployment for `cmdb-mcp http`.
+#
+# Single replica by design: MCP streamable-HTTP session state lives in
+# process memory (see docs/remote-http.md).  Run exactly one adapter
+# instance per client group; externalize the session store before scaling
+# out.  TLS is terminated by a reverse proxy / load balancer in front —
+# the adapter always speaks plain HTTP on an internal socket.
+#
+# The four `:?`-guarded variables are REQUIRED: without them `docker
+# compose` fails fast, mirroring the adapter's fail-closed startup
+# validation (MCP_BIND_HOST is non-loopback here, so MCP_AUTH_TOKEN is
+# mandatory; MCP_ADAPTER=veops requires VEOPS_BASE_URL plus the
+# VEOPS_KEY / VEOPS_SECRET credential pair).
+# Supply them from your shell environment or a git-ignored .env file —
+# never commit real values (see .env.example for names and placeholders).
+
+services:
+  adapter:
+    build: .
+    image: cmdb-mcp-adapter:local
+    container_name: cmdb-mcp-adapter
+    ports:
+      - "8000:8000"
+    environment:
+      # Inbound / runtime domain
+      # Non-loopback bind -> MCP_AUTH_TOKEN is required (fail closed).
+      MCP_BIND_HOST: "0.0.0.0"
+      MCP_PORT: "8000"
+      # "veops" (requires the VEOPS_* vars below) or "mock" (in-process,
+      # no upstream credentials needed — in that case drop the VEOPS_* lines).
+      MCP_ADAPTER: "veops"
+      # Bearer token authenticating MCP *clients* of this endpoint.
+      MCP_AUTH_TOKEN: "${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN (required for the non-loopback bind); see .env.example}"
+      # Upstream CMDB domain — credentials the adapter presents *to* VeOps.
+      VEOPS_BASE_URL: "${VEOPS_BASE_URL:?Set VEOPS_BASE_URL (required by the veops adapter); see .env.example}"
+      VEOPS_KEY: "${VEOPS_KEY:?Set VEOPS_KEY (required by the veops adapter); see .env.example}"
+      VEOPS_SECRET: "${VEOPS_SECRET:?Set VEOPS_SECRET (required by the veops adapter); see .env.example}"
+    restart: unless-stopped
+    # compose has no separate readiness concept; this single healthcheck
+    # (same probe as the image's HEALTHCHECK) is what orchestrators and
+    # reverse proxies should gate traffic on.  For deeper upstream
+    # connectivity checks, probe /readyz (upstream prober) via the
+    # reverse proxy instead.
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request, os; urllib.request.urlopen(\"http://127.0.0.1:%s/healthz\" % os.environ.get(\"MCP_PORT\", \"8000\"), timeout=3)"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
