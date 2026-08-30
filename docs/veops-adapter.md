@@ -104,13 +104,40 @@ All paths are relative to `VEOPS_BASE_URL` plus `API_PREFIX`
 adds only `unique_name`).  The adapter therefore resolves each
 model's `fields` from the global attribute dictionary
 (`GET /attributes/s`, `{id, name, alias, value_type, is_choice,
-choice, ...}`) using the deployment's naming convention: an attribute
+choice, ...}`).
+
+**`GET /attributes/s` is paginated.**  The upstream serves a default
+page of 50 entries and honours `page` / `page_size` (verified
+2026-08-28 on the intranet deployment: 210 attributes in total,
+`page_size=500` returns them all in one page).  A single unpaginated
+call therefore truncates the dictionary to its first page and silently
+leaves most model types with `fields=()`.  The adapter pages through
+the endpoint (`page=1,2,...`, requesting `page_size=500`) until a
+short or empty page arrives — the response carries no total count, so
+a short page is the end-of-data signal (a deployment that capped
+`page_size` below the requested value would truncate the fetch at the
+first page; no such cap was observed in the 2026-08 probe).  A total
+that is an exact multiple of the page size costs one extra request
+(the terminating empty page), and a page that adds no new attribute
+also terminates the loop (a guard against an upstream that repeats a
+page).
+
+Matching uses the deployment's naming convention: an attribute
 belongs to a type when its name equals the type name, starts with
 `<type>_`, or starts with an 8-character prefix of the type name
-(`credential` → `credenti_*`, matching VeOps's attribute table).  Types
-with no match get `fields=()`; both dictionaries are cached with a 60 s
-TTL.  This is a documented degradation — instance *values* still flow
-through `data` regardless of the `fields` metadata.
+(`credential` → `credenti_*`, matching VeOps's attribute table).
+Some types **reuse another type's attribute naming**: on the
+intranet deployment (2026-08-28), `monitoring_component` CIs
+carry `middlewa_*` attributes (e.g. `middlewa_project`,
+`middlewa_lifecycle_status`) because the type reuses the middleware
+attribute set — the naming convention can never match those.  The
+matcher therefore also consults a small, explicit type→prefix alias
+table (`_ATTR_PREFIX_ALIASES` in `adapter.py`); add an entry there
+when a deployment reuses another type's prefix for yet another type.
+
+Types with no match get `fields=()`; both dictionaries are cached with
+a 60 s TTL.  This is a documented degradation — instance *values*
+still flow through `data` regardless of the `fields` metadata.
 
 ### Instance payloads
 

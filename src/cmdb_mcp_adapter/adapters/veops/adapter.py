@@ -42,6 +42,14 @@ Contract notes (verified 2026-08, see ``docs/veops-adapter.md``):
   dictionary by the deployment's naming convention (``credential`` →
   ``credenti_*``); models with no match get ``fields=()`` (a documented
   degradation — instance values still flow through ``data``).
+  ``GET /attributes/s`` is *paginated* upstream (default page 50;
+  ``page`` / ``page_size`` honoured), so the adapter pages through it
+  (``page=1,2,...`` until a short or empty page arrives) instead of
+  trusting the first page — a single unpaginated call silently
+  truncates the dictionary on real deployments.  A few types reuse
+  another type's attribute prefix (``monitoring_component`` →
+  ``middlewa_*``), which the explicit alias table in
+  :meth:`_attr_matches_type` covers (see ``_ATTR_PREFIX_ALIASES``).
   The ci_types/attributes lookups are cached with a 60 s TTL.
 """
 
@@ -84,6 +92,32 @@ _PATH_ATTRIBUTES = "/attributes/s"
 #: no change notification, so a short TTL balances freshness against
 #: request volume (one upstream call per entry refresh).
 _CACHE_TTL_SECONDS = 60.0
+
+#: Page size requested for ``GET /attributes/s``.  The upstream default
+#: page is 50 entries, which truncates the global attribute dictionary
+#: on real deployments (210 entries on the intranet deployment,
+#: 2026-08); 500 was verified to be honoured there and keeps the fetch
+#: to a handful of pages.  The response carries no total count, so a
+#: short page is the end-of-data signal — a deployment that capped
+#: ``page_size`` below the requested value would truncate the fetch at
+#: its first page; no such cap was observed on the probed deployment.
+_ATTRIBUTES_PAGE_SIZE = 500
+
+#: Explicit type→prefix aliases for ci_types that *reuse another
+#: type's* attribute naming (a VeOps deployment convention the type
+#: name alone cannot express).  Verified against the intranet VeOps host
+#: deployment (2026-08): ``monitoring_component`` CIs carry
+#: ``middlewa_*`` attributes (e.g. ``middlewa_project``,
+#: ``middlewa_lifecycle_status``) because the type reuses the
+#: middleware attribute set — the naming convention (type name or its
+#: 8-character prefix) can never match those.  ``/ci_types`` entries
+#: carry no attribute list, so the naming convention is the only
+#: type→attribute mapping source and this alias table is the only way
+#: to cover such reuse.  Keep it small: add an entry only when a
+#: deployment actually reuses another type's prefix.
+_ATTR_PREFIX_ALIASES: dict[str, tuple[str, ...]] = {
+    "monitoring_component": ("middlewa_",),
+}
 
 
 class VeopsAdapter:
@@ -180,9 +214,39 @@ class VeopsAdapter:
         return hit[0]
 
     def _refresh_attributes(self) -> None:
-        """Fetch the global attribute dictionary (retried, 60 s TTL)."""
-        payload = self._client.request("GET", _PATH_ATTRIBUTES)
-        self._attribute_fields = tuple(mapper.map_attributes(payload))
+        """Fetch the *entire* global attribute dictionary (60 s TTL).
+
+        ``GET /attributes/s`` is paginated upstream (default page 50;
+        ``page`` / ``page_size`` honoured), so a single unpaginated call
+        silently truncates the dictionary and leaves most model types
+        with ``fields=()`` (verified on the intranet deployment,
+        2026-08).  Pages are fetched in order (``page=1,2,...``) until
+        a short or empty page arrives (the response carries no total
+        count, so a short page is the end-of-data signal); a total
+        that is an exact multiple of the requested page size costs one
+        extra request that returns the terminating empty page.  A page
+        that adds no
+        new attribute also terminates the loop (a guard against an
+        upstream that repeats the same page instead of advancing).
+        """
+        fields: list[ModelField] = []
+        seen_names: set[str] = set()
+        page = 1
+        while True:
+            payload = self._client.request(
+                "GET",
+                _PATH_ATTRIBUTES,
+                params={"page": page, "page_size": _ATTRIBUTES_PAGE_SIZE},
+            )
+            batch = mapper.map_attributes(payload)
+            fresh = [f for f in batch if f.name not in seen_names]
+            for f in fresh:
+                seen_names.add(f.name)
+            fields.extend(fresh)
+            if len(batch) < _ATTRIBUTES_PAGE_SIZE or not fresh:
+                break
+            page += 1
+        self._attribute_fields = tuple(fields)
         self._attributes_fetched_at = self._now()
 
     def _attributes_available(self) -> bool:
@@ -206,8 +270,11 @@ class VeopsAdapter:
         ci_types + global attribute caches.  Matching is by the
         deployment's naming convention: an attribute belongs to a type
         when its name starts with ``<type>_`` or with an 8-character
-        prefix of the type name (``credential`` → ``credenti_*``).
-        Types with no match get ``fields=()``."""
+        prefix of the type name (``credential`` → ``credenti_*``), or
+        when it starts with one of the type's explicit prefix aliases
+        from :data:`_ATTR_PREFIX_ALIASES` (types that reuse another
+        type's attribute naming).  Types with no match get
+        ``fields=()``."""
         self._ensure_attributes()
         now = self._now()
         out: dict[str, tuple[tuple[ModelField, ...], float]] = {}
@@ -224,7 +291,11 @@ class VeopsAdapter:
         if attr_name == type_name or attr_name.startswith(f"{type_name}_"):
             return True
         short = type_name[:8]
-        return len(short) >= 6 and attr_name.startswith(f"{short}_")
+        if len(short) >= 6 and attr_name.startswith(f"{short}_"):
+            return True
+        return any(
+            attr_name.startswith(alias) for alias in _ATTR_PREFIX_ALIASES.get(type_name, ())
+        )
 
     def _known_fields(self, model_name: str) -> tuple[str, ...]:
         """Field names for a model (best effort, cached 60 s)."""

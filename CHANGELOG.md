@@ -5,6 +5,36 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [0.2.4] - 2026-08-28
+
+### Fixed
+
+* **`get_models` field resolution truncated by a paginated upstream
+  endpoint** — VeOps `GET /attributes/s` is paginated (default page
+  50; `page` / `page_size` honoured), but the veops adapter called it
+  without pagination parameters, silently truncating the global
+  attribute dictionary to its first page.  On the intranet VeOps host
+  production deployment (210 attributes) this left `middleware`,
+  `credential`, `operation_runbook`, `monitoring_component` and other
+  types with empty `fields` in `get_models`.  The adapter now pages
+  through the endpoint (`page=1,2,...`, requesting `page_size=500` —
+  verified to be honoured on the intranet deployment) until a
+  short or empty page arrives — the response carries no total count,
+  so a short page is the end-of-data signal; a total that is an exact
+  multiple of the page size costs one extra request (the terminating
+  empty page), and a page that adds no new attribute also stops the
+  loop.  The 60 s cache semantics and the best-effort degradation
+  (unavailable → `fields=()`) are unchanged.
+* **`monitoring_component` field resolution** — the
+  `monitoring_component` ci_type reuses the `middleware` attribute
+  naming (`middlewa_*`; its CIs carry `middlewa_project` /
+  `middlewa_lifecycle_status` on the live deployment), which the
+  naming-convention matcher (type name or its 8-character prefix) can
+  never match.  The matcher now also consults a small, explicit
+  type→prefix alias table (`_ATTR_PREFIX_ALIASES` in `adapter.py`;
+  `monitoring_component` → `middlewa_`); extend it if a deployment
+  reuses another type's prefix for yet another type.
+
 ## [0.2.3] - 2026-08-26
 
 ### Added
