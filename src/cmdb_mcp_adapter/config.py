@@ -72,6 +72,12 @@ ENV_VEOPS_SECRET = "VEOPS_SECRET"
 #: while ``VEOPS_KEY``/``VEOPS_SECRET`` are missing.  Never used to
 #: authenticate.
 ENV_VEOPS_TOKEN = "VEOPS_TOKEN"
+#: Read-only switch for the veops adapter.  When enabled, the three
+#: mutation tools (``create_instance`` / ``update_instance`` /
+#: ``delete_instance``) are removed from the MCP tool list and the
+#: adapter refuses any write with ``unsupported_operation``.  Default
+#: off (writes allowed) so local/sandbox tests keep exercising writes.
+ENV_VEOPS_READONLY = "VEOPS_READONLY"
 
 #: Every environment variable the adapter understands.  Tests and secret
 #: scans use this as the single source of truth.
@@ -88,6 +94,7 @@ ALL_ENV_VARS: frozenset[str] = frozenset(
         ENV_VEOPS_KEY,
         ENV_VEOPS_SECRET,
         ENV_VEOPS_TOKEN,
+        ENV_VEOPS_READONLY,
     }
 )
 
@@ -277,12 +284,18 @@ class UpstreamSettings:
         secret: The VeOps user secret (``VEOPS_SECRET``), or ``None``.
         token: Legacy ``VEOPS_TOKEN`` value, read for diagnosis only
             (pre-0.2.0 deployments); never used to authenticate.
+        readonly: The ``VEOPS_READONLY`` switch (``True`` when the env
+            value is one of ``1/true/yes/on`` case-insensitively).
+            When ``True`` the veops adapter refuses all write
+            operations; defaults to ``False`` (writes allowed) so local
+            and sandbox tests keep exercising the full contract.
     """
 
     base_url: str | None = None
     key: str | None = None
     secret: str | None = None
     token: str | None = None
+    readonly: bool = False
 
     def redaction_secrets(self) -> tuple[str, ...]:
         """Credential values that must never appear in logs or
@@ -305,7 +318,10 @@ def load_upstream_settings(env: os._Environ[str] | None = None) -> UpstreamSetti
     set), ``VEOPS_KEY`` / ``VEOPS_SECRET`` (the VeOps 2.6.2 user
     credential pair used for per-request signing), and the legacy
     ``VEOPS_TOKEN`` (read for diagnosis only; the veops adapter turns it
-    into a migration error when the new pair is missing).  The loader
+    into a migration error when the new pair is missing), and
+    ``VEOPS_READONLY`` (the read-only switch; any of ``1/true/yes/on``
+    case-insensitively enables it, everything else — including unset —
+    keeps writes enabled).  The loader
     itself treats all values as optional so that the *generic* upstream
     domain can be represented even when a specific adapter does not need
     them; the veops adapter enforces the mandatory set (fail closed)
@@ -326,7 +342,24 @@ def load_upstream_settings(env: os._Environ[str] | None = None) -> UpstreamSetti
         key=env.get(ENV_VEOPS_KEY) or None,
         secret=env.get(ENV_VEOPS_SECRET) or None,
         token=env.get(ENV_VEOPS_TOKEN) or None,
+        readonly=_truthy_flag(env.get(ENV_VEOPS_READONLY)),
     )
+
+
+_TRUTHY_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on"})
+
+
+def _truthy_flag(raw: str | None) -> bool:
+    """Parse a boolean-ish env flag (``1/true/yes/on`` case-insensitive).
+
+    An empty or unset value is ``False``; any other unrecognized value
+    is *also* ``False`` — the switch is fail-open-toward-writes by
+    design, so a typo in the flag degrades to the previous (write-
+    enabled) behaviour instead of crashing startup.
+    """
+    if raw is None:
+        return False
+    return raw.strip().lower() in _TRUTHY_VALUES
 
 
 def validate_upstream_settings(upstream: UpstreamSettings) -> None:

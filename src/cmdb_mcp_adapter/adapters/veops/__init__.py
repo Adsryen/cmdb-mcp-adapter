@@ -49,7 +49,11 @@ def create_veops_adapter(settings: Settings) -> CMDBAdapter:
         max_retries=settings.http_max_retries,
     )
     client = VeopsClient(config)
-    return VeopsAdapter(client, max_retries=settings.http_max_retries)
+    return VeopsAdapter(
+        client,
+        max_retries=settings.http_max_retries,
+        readonly=upstream.readonly,
+    )
 
 
 __all__ = [

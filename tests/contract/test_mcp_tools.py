@@ -27,7 +27,7 @@ import pytest
 
 from cmdb_mcp_adapter.adapters.mock import MockAdapter
 from cmdb_mcp_adapter.config import Settings
-from cmdb_mcp_adapter.core import CoreService
+from cmdb_mcp_adapter.core import READONLY_TOOL_NAMES, CoreService
 from cmdb_mcp_adapter.server.mcp_server import build_mcp_server
 
 EXPECTED_TOOL_NAMES = [
@@ -323,3 +323,67 @@ class TestErrorMapping:
                 assert r.isError is True
 
         _run(check())
+
+# ---------------------------------------------------------------------------
+# Read-only mode (VEOPS_READONLY): the three mutation tools disappear from
+# the advertised list and cannot be invoked.
+# ---------------------------------------------------------------------------
+
+
+class TestReadOnlyMode:
+    def _build_readonly(self, adapter: MockAdapter) -> Any:
+        return build_mcp_server(
+            Settings(adapter="veops"), CoreService(adapter), readonly=True
+        )
+
+    def test_list_tools_hides_write_tools(self) -> None:
+        server = self._build_readonly(MockAdapter())
+
+        async def check() -> list[str]:
+            async with _session(server) as cs:
+                tools = await cs.list_tools()
+                return [t.name for t in tools.tools]
+
+        check_run = _run(check())
+        assert check_run == list(READONLY_TOOL_NAMES)
+        assert "create_instance" not in check_run
+        assert "update_instance" not in check_run
+        assert "delete_instance" not in check_run
+        assert len(check_run) == 4
+
+    def test_read_tool_still_works(self) -> None:
+        server = self._build_readonly(MockAdapter())
+
+        async def check() -> bool:
+            async with _session(server) as cs:
+                r = await cs.call_tool("get_models", {})
+                return r.isError is False
+
+        assert _run(check()) is True
+
+    def test_write_tool_call_rejected(self) -> None:
+        server = self._build_readonly(MockAdapter())
+
+        async def check() -> bool:
+            async with _session(server) as cs:
+                r = await cs.call_tool(
+                    "create_instance",
+                    {"model_name": "service", "data": {"name": "x"}},
+                )
+                return r.isError is True
+
+        assert _run(check()) is True
+
+    def test_default_keeps_all_seven_tools(self) -> None:
+        # The default (write-enabled) build must still advertise all seven.
+        server = build_mcp_server(
+            Settings(adapter="veops"), CoreService(MockAdapter())
+        )
+
+        async def check() -> list[str]:
+            async with _session(server) as cs:
+                tools = await cs.list_tools()
+                return [t.name for t in tools.tools]
+
+        assert _run(check()) == EXPECTED_TOOL_NAMES
+

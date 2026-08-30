@@ -142,6 +142,7 @@ defaults (the container entrypoint passes no flags).
 | `VEOPS_BASE_URL`   | `${VEOPS_BASE_URL:?…}` | VeOps CMDB base URL; required by the `veops` adapter (fail closed).                             |
 | `VEOPS_KEY`        | `${VEOPS_KEY:?…}`      | VeOps user key (`_key` query parameter); required by the `veops` adapter (fail closed).         |
 | `VEOPS_SECRET`     | `${VEOPS_SECRET:?…}`   | VeOps user secret (per-request signing material; never logged); required by the `veops` adapter (fail closed). |
+| `VEOPS_READONLY`   | *(optional)*     | Read-only switch. Set to `1` to disable the three mutation tools (see [VeOps Adapter → Read-only mode](veops-adapter.md#read-only-mode)). Omit or set to any other value to keep writes enabled. |
 | `MCP_HTTP_TIMEOUT`, `MCP_HTTP_MAX_RETRIES`, `MCP_LOG_LEVEL` | not set (defaults) | Optional; add to the compose `environment:` block to override. |
 
 The `${VAR:?…}` syntax means compose aborts before creating the

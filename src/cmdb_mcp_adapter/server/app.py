@@ -128,7 +128,15 @@ def create_app(settings: Settings) -> MCPServer:
 
     adapter = _build_adapter(settings)
     service = CoreService(adapter)
-    server = build_mcp_server(settings, service)
+    # The VEOPS_READONLY switch is a veops-domain flag: it only hides the
+    # mutation tools when the composed adapter is the veops one.  The mock
+    # adapter (contract tests / local dev) always keeps the full tool set
+    # regardless of the env value.
+    server = build_mcp_server(
+        settings,
+        service,
+        readonly=(settings.adapter == "veops" and upstream.readonly),
+    )
     # FastMCP satisfies the MCPServer protocol at runtime; the cast is a
     # compile-time convenience for the launchers.
     return server

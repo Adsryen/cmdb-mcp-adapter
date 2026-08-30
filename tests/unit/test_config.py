@@ -49,6 +49,7 @@ def _clean_env() -> dict[str, str]:
         "VEOPS_KEY",
         "VEOPS_SECRET",
         "VEOPS_TOKEN",
+        "VEOPS_READONLY",
     ):
         out.pop(key, None)
     return out
@@ -248,6 +249,35 @@ class TestUpstreamSettings:
         assert u.key == "key-1"
         assert u.secret == "sekret"
         assert u.token == "legacy"
+
+    def test_readonly_defaults_false(self) -> None:
+        u = load_upstream_settings({})
+        assert u.readonly is False
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("1", True),
+            ("true", True),
+            ("yes", True),
+            ("on", True),
+            ("TRUE", True),
+            (" On ", True),
+            ("0", False),
+            ("false", False),
+            ("no", False),
+            ("off", False),
+            ("", False),
+            ("garbage", False),
+        ],
+    )
+    def test_readonly_parsing(self, value: str, expected: bool) -> None:
+        u = load_upstream_settings({"VEOPS_READONLY": value})
+        assert u.readonly is expected
+
+    def test_readonly_unset_defaults_false(self) -> None:
+        u = load_upstream_settings({"VEOPS_KEY": "k", "VEOPS_SECRET": "s"})
+        assert u.readonly is False
 
     def test_invalid_scheme_raises(self) -> None:
         with pytest.raises(ConfigurationError):

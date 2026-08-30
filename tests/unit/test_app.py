@@ -97,3 +97,55 @@ def _list_tool_names(lowlevel: object) -> list[str]:
         return [t.name for t in inner.tools]
 
     return asyncio.run(_invoke())
+
+# ---------------------------------------------------------------------------
+# Read-only mode (VEOPS_READONLY) through the composition root
+# ---------------------------------------------------------------------------
+
+
+class TestCreateAppReadOnly:
+    def test_veops_readonly_hides_write_tools(self, monkeypatch) -> None:
+        monkeypatch.setenv("VEOPS_BASE_URL", "http://cmdb.test:5000")
+        monkeypatch.setenv("VEOPS_KEY", "k")
+        monkeypatch.setenv("VEOPS_SECRET", "s")
+        monkeypatch.setenv("VEOPS_READONLY", "1")
+        settings = Settings(adapter="veops")
+        server = create_app(settings)
+        names = _list_tool_names(server._mcp_server)
+        assert "create_instance" not in names
+        assert "update_instance" not in names
+        assert "delete_instance" not in names
+        assert names == [
+            "get_models",
+            "get_instances",
+            "search_instances",
+            "get_relations",
+        ]
+
+    def test_veops_not_readonly_keeps_all_tools(self, monkeypatch) -> None:
+        monkeypatch.setenv("VEOPS_BASE_URL", "http://cmdb.test:5000")
+        monkeypatch.setenv("VEOPS_KEY", "k")
+        monkeypatch.setenv("VEOPS_SECRET", "s")
+        monkeypatch.delenv("VEOPS_READONLY", raising=False)
+        settings = Settings(adapter="veops")
+        server = create_app(settings)
+        names = _list_tool_names(server._mcp_server)
+        assert names == [
+            "get_models",
+            "get_instances",
+            "create_instance",
+            "update_instance",
+            "delete_instance",
+            "search_instances",
+            "get_relations",
+        ]
+
+    def test_mock_ignores_veops_readonly_env(self, monkeypatch) -> None:
+        # VEOPS_READONLY is a veops-domain switch: the mock adapter must
+        # keep the full tool set even when the env flag is set.
+        monkeypatch.setenv("VEOPS_READONLY", "1")
+        settings = Settings(adapter="mock")
+        server = create_app(settings)
+        names = _list_tool_names(server._mcp_server)
+        assert len(names) == 7
+

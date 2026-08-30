@@ -66,6 +66,20 @@ ALL_TOOL_NAMES: tuple[str, ...] = (
     TOOL_GET_RELATIONS,
 )
 
+#: The subset of :data:`ALL_TOOL_NAMES` that mutates CMDB state.  A
+#: read-only adapter exposes all tools *except* these three.
+WRITE_TOOL_NAMES: tuple[str, ...] = (
+    TOOL_CREATE_INSTANCE,
+    TOOL_UPDATE_INSTANCE,
+    TOOL_DELETE_INSTANCE,
+)
+
+#: The read-only tool set: everything in :data:`ALL_TOOL_NAMES` except
+#: :data:`WRITE_TOOL_NAMES`.  Order is preserved from ``ALL_TOOL_NAMES``.
+READONLY_TOOL_NAMES: tuple[str, ...] = tuple(
+    name for name in ALL_TOOL_NAMES if name not in WRITE_TOOL_NAMES
+)
+
 __all__ = [
     "ALL_TOOL_NAMES",
     "AuthenticationError",
@@ -85,6 +99,7 @@ __all__ = [
     "NotFoundError",
     "Page",
     "RateLimitError",
+    "READONLY_TOOL_NAMES",
     "TOOL_CREATE_INSTANCE",
     "TOOL_DELETE_INSTANCE",
     "TOOL_GET_INSTANCES",
@@ -96,5 +111,6 @@ __all__ = [
     "UpstreamServerError",
     "UnsupportedOperationError",
     "ValidationError",
+    "WRITE_TOOL_NAMES",
     "normalize",
 ]

@@ -14,6 +14,7 @@ ENV_KEYS = (
     "VEOPS_KEY",
     "VEOPS_SECRET",
     "VEOPS_TOKEN",
+    "VEOPS_READONLY",
 )
 
 

@@ -149,6 +149,7 @@ rotated by changing the environment and restarting the process.
 | `VEOPS_SECRET`         | **yes**  | The VeOps user secret (signing material), used to compute `_secret`; never logged. |
 | `MCP_HTTP_TIMEOUT`     | no (default 30) | Per-request timeout (seconds) applied to every veops call (the readiness probe uses its own fixed 5-second timeout). |
 | `MCP_HTTP_MAX_RETRIES` | no (default 2)  | Retry budget for *read* operations only (see below).       |
+| `VEOPS_READONLY`       | no (off)   | Read-only switch. When enabled the three mutation tools are disabled (see [Read-only mode](#read-only-mode)). |
 
 **0.2.0 migration.**  The pre-0.2.0 single-token variable
 `VEOPS_TOKEN` is no longer used: one token cannot express a key/secret
@@ -180,6 +181,50 @@ in log lines, readiness bodies, or error messages.
 `MCP_HTTP_TIMEOUT` and `MCP_HTTP_MAX_RETRIES` are consumed by the veops
 client: the timeout bounds every HTTP call, and the retry budget applies
 only to idempotent reads.
+
+## Read-only mode
+
+Since 0.2.3 the veops adapter supports a **read-only mode** via the
+`VEOPS_READONLY` environment variable.
+
+**Why it exists.**  The adapter authenticates to VeOps with a
+*per-user* `key`/`secret` pair (`VEOPS_KEY` / `VEOPS_SECRET`).  In many
+deployments that credential is an **admin-level** account, which means
+the adapter's write tools (`create_instance` / `update_instance` /
+`delete_instance`) could mutate real CMDB data.  For a production
+endpoint you usually want the adapter to *read* the CMDB for MCP
+clients but never write to it.  `VEOPS_READONLY=1` makes that the
+enforced contract rather than a convention.
+
+**Behaviour when `VEOPS_READONLY` is set to `1`/`true`/`yes`/`on`
+(case-insensitive):**
+
+* The three write operations raise an `unsupported_operation` error
+  **before any upstream HTTP request is made** — no partial write is
+  ever possible, and no request touches the CMDB at all.
+* The MCP server omits the three mutation tools from `list_tools` and
+  does not register their dispatch handlers, so a well-behaved MCP
+  client never even sees them.  (A client that nevertheless calls
+  `create_instance` by name receives an `unknown tool` error.)
+* The four read tools — `get_models`, `get_instances`,
+  `search_instances`, `get_relations` — are unaffected and keep their
+  full behaviour.
+
+**When it does *not* apply.**  `VEOPS_READONLY` is a *veops-domain*
+switch: it only takes effect when `MCP_ADAPTER=veops`.  The `mock`
+adapter (used for contract tests and local development) always
+exposes the full tool set regardless of the env value, so the
+write-path contract tests keep exercising the complete surface.
+
+**Default is write-enabled.**  The flag defaults to *off*, so local and
+sandbox deployments that intentionally test the write contract keep
+working unchanged.  To deploy read-only you must set the variable
+explicitly (see the [deployment doc](docker-deployment.md)).
+
+Any unrecognized value (e.g. a typo like `yep`) degrades to the
+write-enabled default rather than failing startup — the switch is
+fail-open-toward-writes by design, because the safer *deployment*
+choice is to simply not set the flag at all when you want writes.
 
 ## Error mapping
 

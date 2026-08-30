@@ -57,6 +57,7 @@ domains must be rotated independently and never share a value.
 | `VEOPS_KEY`        | *(none)*| VeOps user key (identity); sent as the `_key` query parameter. Required by the `veops` adapter (fail closed). |
 | `VEOPS_SECRET`     | *(none)*| VeOps user secret; signing material for the per-request `_secret` signature (SHA-1 over path + secret + sorted parameter values; see [VeOps Adapter](veops-adapter.md#authentication-keysecret-signing)). Required by the `veops` adapter (fail closed); never logged. |
 | `VEOPS_TOKEN`      | *(none)*| **Deprecated in 0.2.0, never used to authenticate.** Read for diagnostics only: if set while `VEOPS_KEY`/`VEOPS_SECRET` are missing, startup fails with a migration error naming the two new variables. |
+| `VEOPS_READONLY`   | *(off)*   | Read-only switch. When set to `1`/`true`/`yes`/`on` (case-insensitive), the veops adapter refuses all write operations with `unsupported_operation` **before any upstream call**, and the MCP server omits the three mutation tools from `list_tools`. Applies only when `MCP_ADAPTER=veops`. Default off (writes enabled) so local/sandbox tests keep exercising the write contract. See [VeOps Adapter → Read-only mode](veops-adapter.md#read-only-mode). |
 
 A copy of this table with placeholder values lives in [`.env.example`](../.env.example).
 

@@ -5,6 +5,34 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [0.2.3] - 2026-08-26
+
+### Added
+
+* **`VEOPS_READONLY` read-only switch** — a new environment variable in
+  the upstream CMDB domain (values `1/true/yes/on` case-insensitively
+  enable it; anything else, including unset, keeps writes enabled).
+  When enabled:
+  - the veops adapter refuses `create_instance` / `update_instance` /
+    `delete_instance` with an `unsupported_operation` error **before any
+    upstream HTTP call** (no request is ever sent);
+  - the MCP server omits the three mutation tools from `list_tools` and
+    does not register their dispatch handlers, so an MCP client cannot
+    even name them.
+  All four read tools (`get_models` / `get_instances` /
+  `search_instances` / `get_relations`) are unaffected.
+
+  The flag is a *veops-domain* switch: it applies only when
+  `MCP_ADAPTER=veops`.  The mock adapter (contract tests / local dev)
+  always keeps the full tool set regardless of the env value, so the
+  existing write-path contract tests keep exercising the full surface.
+
+  Intended for production deployments (e.g. the intranet VeOps host VeOps
+  stack) where the adapter's admin-level `users.key/secret` must not be
+  able to mutate CMDB data: deploy with `VEOPS_READONLY=1` to expose a
+  read-only MCP endpoint.  Default is write-enabled so local/sandbox
+  tests continue to verify the write contract end-to-end.
+
 ## [0.2.2] - 2026-08-26
 
 ### Changed

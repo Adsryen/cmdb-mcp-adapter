@@ -51,6 +51,7 @@ from mcp.types import (
 from cmdb_mcp_adapter.config import Settings
 from cmdb_mcp_adapter.core import (
     ALL_TOOL_NAMES,
+    READONLY_TOOL_NAMES,
     CoreError,
     CoreService,
     normalize,
@@ -260,16 +261,27 @@ _handler_tool_names: dict[int, str] = {}
 _service_adapter_label: str = "unknown"
 
 
-def build_mcp_server(settings: Settings, service: CoreService) -> FastMCP:
-
-    """Build the transport-agnostic MCP server with the seven core tools.
+def build_mcp_server(
+    settings: Settings,
+    service: CoreService,
+    *,
+    readonly: bool = False,
+) -> FastMCP:
+    """Build the transport-agnostic MCP server with the core tools.
 
     The returned :class:`FastMCP` is the *single* shared object both the
     stdio and (future) HTTP transports consume.  Construction does not
     perform any network I/O; the adapter is only touched when a tool is
     actually called.
+
+    When ``readonly`` is ``True`` the three mutation tools
+    (``create_instance`` / ``update_instance`` / ``delete_instance``)
+    are removed from the advertised tool list and their dispatch
+    handlers are not registered, so an MCP client cannot even name
+    them.  Read tools are unaffected.
     """
     del settings  # The server is vendor-neutral; the adapter is already in service.
+    advertised = READONLY_TOOL_NAMES if readonly else ALL_TOOL_NAMES
     lowlevel = Server(
         name=SERVER_NAME,
         instructions=(
@@ -290,7 +302,7 @@ def build_mcp_server(settings: Settings, service: CoreService) -> FastMCP:
                 description=_TOOL_DESCRIPTIONS.get(name, ""),
                 inputSchema=_TOOL_SCHEMAS[name],
             )
-            for name in ALL_TOOL_NAMES
+            for name in advertised
         ]
         return ServerResult(ListToolsResult(tools=tools))
 
@@ -376,12 +388,13 @@ def build_mcp_server(settings: Settings, service: CoreService) -> FastMCP:
     handlers: dict[str, Handler] = {
         "get_models": _wrap(_get_models, "get_models"),
         "get_instances": _wrap(_get_instances, "get_instances"),
-        "create_instance": _wrap(_create_instance, "create_instance"),
-        "update_instance": _wrap(_update_instance, "update_instance"),
-        "delete_instance": _wrap(_delete_instance, "delete_instance"),
         "search_instances": _wrap(_search_instances, "search_instances"),
         "get_relations": _wrap(_get_relations, "get_relations"),
     }
+    if not readonly:
+        handlers["create_instance"] = _wrap(_create_instance, "create_instance")
+        handlers["update_instance"] = _wrap(_update_instance, "update_instance")
+        handlers["delete_instance"] = _wrap(_delete_instance, "delete_instance")
 
     # ---- single dispatcher handler (the SDK allows only one) -------------
     # We implement the CallToolRequest handler by hand rather than going

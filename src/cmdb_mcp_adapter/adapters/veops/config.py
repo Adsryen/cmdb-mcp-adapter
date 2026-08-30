@@ -75,6 +75,10 @@ class VeopsConfig:
             :attr:`Settings.http_timeout_seconds`).
         max_retries: The retry budget applied to *read* operations (from
             :attr:`Settings.http_max_retries`).
+        readonly: The ``VEOPS_READONLY`` switch.  When ``True`` the
+            adapter refuses all write operations with
+            ``unsupported_operation`` and the MCP server omits the
+            three mutation tools from ``list_tools``.
     """
 
     base_url: str
@@ -82,6 +86,7 @@ class VeopsConfig:
     secret: str
     timeout_seconds: float
     max_retries: int
+    readonly: bool = False
 
 
 def validate_veops_upstream(upstream: UpstreamSettings) -> None:
@@ -146,4 +151,5 @@ def build_veops_config(
         secret=upstream.secret,
         timeout_seconds=timeout_seconds,
         max_retries=max_retries,
+        readonly=upstream.readonly,
     )

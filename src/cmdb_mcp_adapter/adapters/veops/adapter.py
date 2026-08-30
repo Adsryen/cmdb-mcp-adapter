@@ -88,11 +88,19 @@ _CACHE_TTL_SECONDS = 60.0
 
 class VeopsAdapter:
     """A :class:`~cmdb_mcp_adapter.core.adapter.CMDBAdapter` backed by
-    VeOps 2.6.2."""
+    VeOps 2.6.2.
 
-    def __init__(self, client: VeopsClient, *, max_retries: int) -> None:
+    When constructed with ``readonly=True`` (the ``VEOPS_READONLY``
+    switch) the three write operations
+    (``create_instance`` / ``update_instance`` / ``delete_instance``)
+    raise :class:`UnsupportedOperationError` before any upstream call;
+    all read operations are unaffected.
+    """
+
+    def __init__(self, client: VeopsClient, *, max_retries: int, readonly: bool = False) -> None:
         self._client = client
         self._max_retries = max_retries
+        self._readonly = readonly
         # name -> (numeric ci_type id, fetched_at)
         self._type_ids: dict[str, tuple[int, float]] = {}
         # name -> raw ci_types entry (keeps alias/icon/etc. for display)
@@ -118,6 +126,14 @@ class VeopsAdapter:
     def _now(self) -> float:
         # Indirect so tests can freeze time deterministically.
         return time.monotonic()
+
+    def _check_writable(self, operation: str) -> None:
+        """Refuse a write when the adapter runs in read-only mode."""
+        if self._readonly:
+            raise UnsupportedOperationError(
+                f"veops adapter is in read-only mode (VEOPS_READONLY=1); "
+                f"write operation '{operation}' is disabled"
+            )
 
     def _ci_types_fresh(self) -> bool:
         return (
@@ -278,6 +294,7 @@ class VeopsAdapter:
         )
 
     def create_instance(self, model_name: str, data: dict[str, Any]) -> CMDBInstance:
+        self._check_writable("create_instance")
         type_id = self._resolve_type_id(model_name)
         body: dict[str, Any] = {"ci_type": type_id}
         body.update(data)
@@ -291,6 +308,7 @@ class VeopsAdapter:
         data: dict[str, Any],
     ) -> CMDBInstance:
         _ = model_name  # the upstream PUT is addressed by numeric ci id only
+        self._check_writable("update_instance")
         payload = self._client.request(
             "PUT", _PATH_INSTANCE.format(instance_id=instance_id), json_body=dict(data)
         )
@@ -298,6 +316,7 @@ class VeopsAdapter:
 
     def delete_instance(self, model_name: str, instance_id: str) -> None:
         _ = model_name
+        self._check_writable("delete_instance")
         try:
             self._client.request("DELETE", _PATH_INSTANCE.format(instance_id=instance_id))
         except ValidationError as exc:

@@ -14,12 +14,19 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from cmdb_mcp_adapter.adapters.veops import VeopsAdapter
 from cmdb_mcp_adapter.core.errors import (
     ErrorCategory,
     UnsupportedOperationError,
     ValidationError,
 )
-from tests.adapters._fakes import FAKE_KEY, _RecordingTransport, build_adapter
+from tests.adapters._fakes import (
+    FAKE_KEY,
+    _RecordingTransport,
+    build_adapter,
+    build_client,
+    make_config,
+)
 
 API = "/api/v0.1"
 
@@ -533,3 +540,87 @@ class TestSignatureRegression:
         blob = str(redact(query, frozenset({FAKE_KEY, FAKE_SECRET})))
         assert FAKE_KEY not in blob
         assert FAKE_SECRET not in blob
+
+# ---------------------------------------------------------------------------
+# Read-only mode (VEOPS_READONLY)
+# ---------------------------------------------------------------------------
+
+
+class TestReadOnlyMode:
+    """The VEOPS_READONLY switch must hard-disable the three write
+    operations at the adapter boundary (before any upstream call) while
+    leaving every read operation fully functional."""
+
+    def _readonly_adapter(self):
+        transport = _RecordingTransport(
+            {
+                ("GET", f"{API}/ci_types"): CI_TYPES,
+                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                ("GET", f"{API}/ci/type/1"): CIS,
+                ("GET", f"{API}/ci/search"): {"total": 0, "result": []},
+            },
+            {},
+        )
+        client = build_client(transport)
+        return VeopsAdapter(client, max_retries=0, readonly=True)
+
+    def test_create_refused(self) -> None:
+        adapter = self._readonly_adapter()
+        with pytest.raises(UnsupportedOperationError) as exc:
+            adapter.create_instance("quick_reference", {"quick_re_title": "x"})
+        assert "read-only" in exc.value.message
+        assert exc.value.category == ErrorCategory.UNSUPPORTED_OPERATION
+
+    def test_update_refused(self) -> None:
+        adapter = self._readonly_adapter()
+        with pytest.raises(UnsupportedOperationError) as exc:
+            adapter.update_instance("quick_reference", "514", {"a": 1})
+        assert "read-only" in exc.value.message
+
+    def test_delete_refused(self) -> None:
+        adapter = self._readonly_adapter()
+        with pytest.raises(UnsupportedOperationError) as exc:
+            adapter.delete_instance("quick_reference", "514")
+        assert "read-only" in exc.value.message
+
+    def test_writes_make_no_upstream_call(self) -> None:
+        # The refusal must happen *before* any HTTP request is issued.
+        transport = _RecordingTransport(
+            {("GET", f"{API}/ci_types"): CI_TYPES},
+            {},
+        )
+        adapter = VeopsAdapter(build_client(transport), max_retries=0, readonly=True)
+        with pytest.raises(UnsupportedOperationError):
+            adapter.create_instance("quick_reference", {"quick_re_title": "x"})
+        assert transport.requests == []
+
+    def test_reads_still_work(self) -> None:
+        adapter = self._readonly_adapter()
+        models = adapter.list_models()
+        assert [m.name for m in models] == ["quick_reference", "credential"]
+        page = adapter.get_instances(
+            "quick_reference", page_size=10, cursor=None, filters={}
+        )
+        assert len(page.items) == 2
+        search = adapter.search_instances(
+            "quick_reference", "x", page_size=10, cursor=None
+        )
+        assert search.total == 0
+
+    def test_default_is_write_enabled(self) -> None:
+        # Without the flag the same client must *not* refuse writes.
+        transport = _RecordingTransport(
+            {
+                ("GET", f"{API}/ci_types"): CI_TYPES,
+                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                ("POST", f"{API}/ci"): {"ci_id": 3263},
+            },
+            {},
+        )
+        adapter = VeopsAdapter(build_client(transport), max_retries=0)
+        inst = adapter.create_instance(
+            "quick_reference", {"quick_re_title": "new"}
+        )
+        assert inst.instance_id == "3263"
+
+
