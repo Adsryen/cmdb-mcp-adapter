@@ -18,11 +18,14 @@ Retry policy (per the design boundary):
 
 Contract notes (verified 2026-08, see ``docs/veops-adapter.md``):
 
-* **``get_instances`` returns one full page.**  The upstream
-  ``GET /ci/type/<type_id>`` has no pagination and returns *all*
-  instances of the type (up to a few thousand on real deployments).
-  ``next_cursor`` is always ``None`` and a non-``None`` cursor argument
-  is rejected with a validation error.
+* **``get_instances`` returns the whole type in one result page.**
+  The upstream ``GET /ci/type/<type_id>`` *is* paginated (fixed 50
+  per page; ``page`` honoured, ``page_size`` ignored; ``numfound``/
+  ``total`` are per-page counts, not a total), so the adapter pages
+  through ``page=1,2,...`` until a short or empty page arrives and
+  returns the full list with ``total`` = the full count.
+  ``next_cursor`` is always ``None`` and a non-``None`` cursor
+  argument is rejected with a validation error.
 * **``search_instances`` is page-paginated** (``page`` / ``page_size``
   over ``GET /ci/search?q=&ci_type=&page=&page_size=``); the next-page
   number is encoded into the core cursor.  The upstream ``fl`` search
@@ -118,6 +121,18 @@ _ATTRIBUTES_PAGE_SIZE = 500
 _ATTR_PREFIX_ALIASES: dict[str, tuple[str, ...]] = {
     "monitoring_component": ("middlewa_",),
 }
+
+#: Upstream page size of ``GET /ci/type/<type_id>``: the endpoint
+#: serves a *fixed* page of 50 entries — ``page`` is honoured but
+#: ``page_size`` is ignored, and ``numfound``/``total`` in the
+#: response are *per-page* counts, not a total over the type
+#: (verified 2026-08-29 on the intranet deployment, where e.g.
+#: ``data_check`` holds 772 CIs across 16 pages).  The end-of-data
+#: signal is therefore a short page (< 50); a deployment that served
+#: a *smaller* page would make the first page look short and stop
+#: the fetch early (none observed — 115 is fixed at 50), while a
+#: larger page still terminates correctly on the empty page.
+_INSTANCE_PAGE_SIZE = 50
 
 
 class VeopsAdapter:
@@ -334,21 +349,62 @@ class VeopsAdapter:
         cursor: str | None,
         filters: Filters,
     ) -> Page[CMDBInstance]:
+        """Fetch *all* instances of the type in one result page.
+
+        ``GET /ci/type/<type_id>`` is paginated upstream with a fixed
+        page of 50 entries (``page`` honoured, ``page_size`` ignored;
+        ``numfound``/``total`` are per-page counts, not a total), so
+        a single unpaginated call silently truncates any type with
+        more than 50 CIs (verified 2026-08-29 on the intranet VeOps host
+        deployment).  The loop pages through ``page=1,2,...`` until a
+        short or empty page arrives — a page that adds no new ``_id``
+        also terminates it (a guard against an upstream that repeats
+        a page instead of advancing) — and returns the merged list,
+        so ``total`` is the full count and ``next_cursor`` is always
+        ``None``.
+        """
         if cursor is not None:
-            # The upstream instance endpoint is *not* paginated: it
-            # returns the whole type in one response, so there is no
-            # "next page" concept to cursor across.
+            # The adapter already hides the upstream pagination: the
+            # whole type comes back in one result page, so there is
+            # no "next page" concept to cursor across.
             raise ValidationError(
-                "veops instance listing is not paginated: the upstream "
-                "returns all instances of a type in a single response, so "
-                "no cursor is issued or accepted"
+                "veops get_instances returns the full instance list in "
+                "a single result page: the upstream /ci/type/<id> "
+                "endpoint is paginated (fixed 50 per page) and the "
+                "adapter pages through all of it internally, so no "
+                "cursor is issued or accepted"
             )
         type_id = self._resolve_type_id(model_name)
 
         def _one() -> dict[str, Any]:
-            return self._client.request(
-                "GET", _PATH_TYPE_INSTANCES.format(type_id=type_id)
-            )
+            raws: list[Any] = []
+            seen_ids: set[Any] = set()
+            page = 1
+            while True:
+                payload = self._client.request(
+                    "GET",
+                    _PATH_TYPE_INSTANCES.format(type_id=type_id),
+                    params={"page": page},
+                )
+                page_cis = [
+                    c for c in (payload.get("cis") or []) if isinstance(c, dict)
+                ]
+                fresh: list[Any] = []
+                for c in page_cis:
+                    # Key on the raw _id; entries lacking it fall back
+                    # to object identity so they are never merged away.
+                    marker = c.get("_id")
+                    if marker is None:
+                        marker = id(c)
+                    if marker in seen_ids:
+                        continue
+                    seen_ids.add(marker)
+                    fresh.append(c)
+                raws.extend(fresh)
+                if len(page_cis) < _INSTANCE_PAGE_SIZE or not fresh:
+                    break
+                page += 1
+            return {"cis": raws}
 
         payload = self._read(_one, operation="get_instances")
         items = mapper.map_cis(

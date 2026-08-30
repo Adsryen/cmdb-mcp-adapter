@@ -2,13 +2,15 @@
 transport that emulates the *real* VeOps 2.6.2 contract (no network).
 
 Covers the seven protocol methods, the verified quirks (full-page
-instance listing, search pagination + client-side filtering, list-wrapped
-ci_types, untyped second_cis, the paginated global attribute
-dictionary and its attribute-prefix reuse aliases), error-category
-preservation, and the read-vs-write retry policy.  The transport
-enforces ``_key``/``_secret`` signature verification with the
+instance listing that the adapter pages through in full, search
+pagination + client-side filtering, list-wrapped ci_types, untyped
+second_cis, the paginated global attribute dictionary and its
+attribute-prefix reuse aliases),
+error-category preservation, and the read-vs-write retry policy.  The
+transport enforces ``_key``/``_secret`` signature verification with the
 production :func:`sign` — a signing regression shows up as 401 in these
-tests."""
+tests.
+"""
 
 from __future__ import annotations
 
@@ -137,7 +139,8 @@ class TestGetInstances:
         assert len(page.items) == 2
         assert page.total == 2
         assert page.page == 1
-        # The upstream is not paginated: no next cursor is ever issued.
+        # The adapter returns the whole type in one result page, so no
+        # next cursor is ever issued (upstream pagination is hidden).
         assert page.next_cursor is None
         assert page.has_next is False
 

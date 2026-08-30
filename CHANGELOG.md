@@ -5,6 +5,29 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [0.2.5] - 2026-08-29
+
+### Fixed
+
+* **`get_instances` silently truncated large models** — the VeOps
+  `GET /ci/type/<type_id>` endpoint is paginated with a *fixed* page
+  of 50 entries (`page` honoured, `page_size` ignored; `numfound`/
+  `total` are per-page counts — the response carries no total over
+  the type), but the veops adapter issued a single unpaginated GET,
+  so only the first 50 instances were ever returned (the endpoint
+  was only ever probed on types with ≤ 50 CIs, which masked the
+  pagination).  On the intranet deployment this truncated every
+  type with more than 50 live CIs: `data_check` (772), `credential`
+  (445), `middleware` (374), `business_application` (368),
+  `operation_runbook` (236), `network` (113), `server` (62).  The
+  adapter now pages through `page=1,2,...` until a short or empty
+  page arrives (a page that adds no new `_id` also terminates the
+  loop) and returns the whole list in one result page: `total` is
+  the full count, `next_cursor` stays `None`, and a non-`None`
+  cursor is still rejected with a validation error.  The stale
+  "not paginated" contract notes in the module docstring and in
+  `docs/veops-adapter.md` were corrected.
+
 ## [0.2.4] - 2026-08-28
 
 ### Fixed

@@ -74,8 +74,8 @@ All paths are relative to `VEOPS_BASE_URL` plus `API_PREFIX`
 | MCP operation      | VeOps call                                        | Notes |
 |--------------------|---------------------------------------------------|-------|
 | `get_models`       | `GET /ci_types`                                   | `{"ci_types": [...], "numfound": N}` — list wrapper |
-| — (field lookup)   | `GET /ci_types/<name>` + `GET /attributes/s`      | see "Model fields" below |
-| `get_instances`    | `GET /ci/type/<type_id>`                          | `{"cis": [...]}` — *all* instances of the type in one response; no pagination |
+| — (field lookup)   | `GET /ci_types/<name>` + `GET /attributes/s?page=&page_size=` | see "Model fields" below |
+| `get_instances`    | `GET /ci/type/<type_id>?page=`                    | `{"cis": [...], numfound, page, total, type_id}` — paginated upstream: fixed 50/page, `page_size` ignored, `numfound`/`total` are per-page counts; the adapter pages through all of them (see "Traps observed") |
 | `search_instances` | `GET /ci/search?q=&ci_type=&page=&page_size=`     | `{numfound, total, page, result: [...]}` |
 | `get_relations`    | `GET /ci_relations/<instance_id>/second_cis`      | `{numfound, total, page, second_cis: [...]}` (outbound edges; inbound is the symmetric `/first_cis`) |
 | `create_instance`  | `POST /ci`                                        | body `{"ci_type": <type_id>, ...fields, _key, _secret}` — creds in body; answers `{"ci_id": <int>}` (live-verified) |
@@ -89,6 +89,18 @@ All paths are relative to `VEOPS_BASE_URL` plus `API_PREFIX`
   flask_restful route collision between `/ci` and `/ci/<int:ci_id>`).
   Instance listing must go through `/ci/type/<type_id>`; the adapter
   never issues a bare `GET /ci`.
+* `GET /ci/type/<type_id>` is **paginated with a fixed page of 50**
+  (verified 2026-08-29 on the intranet deployment): `page` is
+  honoured (from 1), `page_size` is *ignored*, and `numfound`/`total`
+  in the response are **per-page** counts — the response carries no
+  total over the type, so a short page (< 50) is the only
+  end-of-data signal.  Earlier probes only exercised types with ≤ 50
+  CIs, which made the endpoint look unpaginated.  The adapter pages
+  through `page=1,2,...` until a short or empty page arrives (a page
+  that adds no new `_id` also terminates the loop) and returns the
+  whole list in one result page: `total` is the full count and
+  `next_cursor` is always `None` (a non-`None` cursor is a
+  validation error).
 * The `fl` search parameter controls **returned fields, not
   filtering**: passing `fl=<attr>=<value>` 400s
   (`Attribute attr=value does not exist`).  Attribute filtering is
