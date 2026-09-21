@@ -5,6 +5,26 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [0.2.6] - 2026-09-21
+
+### Fixed
+
+* **Outbound request logs leaked the upstream signing query string** — the
+  `httpx` logger emits one `INFO` line per request containing the *full* URL,
+  and the veops adapter authenticates upstream calls by signing query
+  parameters (`_key` / `_secret`).  The redaction filter only knows the exact
+  configured secrets, so it redacted `_key` but wrote the 40-hex `_secret`
+  **signature** verbatim to stderr / container logs (546 such lines per day on
+  the intranet deployment).  A captured line is replayable for that path
+  + params and lets an attacker verify candidate secrets offline.  Severity is
+  *medium*: reading `docker logs` already implies host root, and the value is
+  a derived signature, not the secret itself.  `configure_logging()` now pins
+  the `httpx` logger to `WARNING`, so genuine transport errors still surface
+  while the request lines (and their signatures) do not.  The adapter's own
+  structured `veops.request` / `veops.response` events were verified to carry
+  no signature (0 matches over 24 h of production logs) and are unchanged.
+
+---
 ## [0.2.5] - 2026-08-29
 
 ### Fixed

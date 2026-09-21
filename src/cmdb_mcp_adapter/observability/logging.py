@@ -152,3 +152,15 @@ def configure_logging(
     handler.addFilter(RedactingFilter(list(secret_values or ())))
     root.addHandler(handler)
     root.setLevel(numeric_level)
+
+    # ``httpx`` logs every outbound request URL at INFO, and the veops adapter
+    # authenticates upstream calls by signing the query string (``_key`` /
+    # ``_secret``).  The redaction filter only knows the *exact*, statically
+    # configured secrets, so the per-request signature can never be registered
+    # with it and would otherwise be written to stderr verbatim (replayable for
+    # that path + params, and usable for offline dictionary checks against the
+    # secret).  Pin the third-party logger to WARNING: connect/timeout errors
+    # still surface, the INFO request lines do not.  The adapter's own
+    # structured ``veops.request`` / ``veops.response`` events log the path
+    # plus a sanitized params mapping (no signature).
+    _logging.getLogger("httpx").setLevel(_logging.WARNING)

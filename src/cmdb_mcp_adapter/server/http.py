@@ -151,8 +151,10 @@ def run_http(settings: Settings) -> int:
     # The inbound token *and* the upstream credential pair (key +
     # secret, plus any legacy 0.1.0 token still in the environment) are
     # registered as exact known secrets with the shared redaction
-    # filter, so no log line — including httpx's own request logs and
-    # the readiness reasons body — can carry a raw credential.
+    # filter, so no log line can carry a raw credential.  The per-request
+    # signature httpx echoes in its own INFO request lines is *not* an exact
+    # known secret (it is computed per call), which is why
+    # :func:`configure_logging` pins the httpx logger to WARNING.
     configure_logging(
         settings.log_level,
         secret_values=[*([settings.auth_token] if settings.auth_token else []),

@@ -114,6 +114,25 @@ class TestConfigureLogging:
         assert "should not appear" not in out.err
         logging.shutdown()
 
+    def test_httpx_request_logs_are_muted(self, capfd: pytest.CaptureFixture[str]) -> None:
+        """httpx INFO lines carry the signed upstream URL -> must not be logged."""
+        signature = "8e05698b8d77a6c88f0ca7a525127ca31b5b943e"
+        configure_logging("INFO", force=True)
+        httpx_logger = logging.getLogger("httpx")
+        assert httpx_logger.level == logging.WARNING
+        assert not httpx_logger.isEnabledFor(logging.INFO)
+        httpx_logger.info("HTTP Request: GET http://upstream/api?_secret=%s 200", signature)
+        sys.stderr.flush()
+        out = capfd.readouterr()
+        assert signature not in out.err
+        # Real problems from the same logger must still get through.
+        httpx_logger.warning("connect timeout to upstream")
+        sys.stderr.flush()
+        out = capfd.readouterr()
+        assert "connect timeout to upstream" in out.err
+        logging.shutdown()
+        httpx_logger.setLevel(logging.NOTSET)
+
 
 # ---------------------------------------------------------------------------
 # RedactingFilter integration with the logging pipeline
