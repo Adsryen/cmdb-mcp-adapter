@@ -40,20 +40,16 @@ Contract notes (verified 2026-08, see ``docs/veops-adapter.md``):
 * **Write calls** sign their scalar JSON-body values the same way GETs
   sign their query parameters.
 * **``list_models``** maps ``GET /ci_types`` (a list-wrapped response).
-  The per-type endpoint returns no attribute list, so per-model
-  ``fields`` are resolved from the global ``GET /attributes/s``
-  dictionary by the deployment's naming convention (``credential`` →
-  ``credenti_*``); models with no match get ``fields=()`` (a documented
-  degradation — instance values still flow through ``data``).
-  ``GET /attributes/s`` is *paginated* upstream (default page 50;
-  ``page`` / ``page_size`` honoured), so the adapter pages through it
-  (``page=1,2,...`` until a short or empty page arrives) instead of
-  trusting the first page — a single unpaginated call silently
-  truncates the dictionary on real deployments.  A few types reuse
-  another type's attribute prefix (``monitoring_component`` →
-  ``middlewa_*``), which the explicit alias table in
-  :meth:`_attr_matches_type` covers (see ``_ATTR_PREFIX_ALIASES``).
-  The ci_types/attributes lookups are cached with a 60 s TTL.
+  The ci_types entries carry **no attribute list**, so per-model
+  ``fields`` are resolved from the type's attribute *binding list*:
+  ``GET /ci_types/<type_id>/attributes`` (one request per model, cached
+  per model with a 60 s TTL).  That endpoint is also the only source of
+  the per-field ``required`` flag and of the resolved enumeration
+  (``choice_value``).  Inferring the mapping from the attribute *naming*
+  convention was tried first and is **wrong on real deployments** —
+  see :meth:`VeopsAdapter._fields_for_type`.  ``list_models`` propagates
+  a binding-lookup failure instead of guessing; instance reads degrade
+  to ``fields=()`` (harmless: their ``data`` stays complete).
 """
 
 from __future__ import annotations
@@ -89,38 +85,15 @@ _PATH_INSTANCE = "/ci/{instance_id}"
 _PATH_SEARCH = "/ci/search"
 _PATH_RELATION_SECOND = "/ci_relations/{instance_id}/second_cis"
 _PATH_RELATION_TYPES = "/relation_types"
-_PATH_ATTRIBUTES = "/attributes/s"
+#: The type→attribute binding list (see :meth:`VeopsAdapter._fields_for_type`
+#: for why this is the only trustworthy field source).  A type *name* is
+#: accepted in the same slot upstream; the adapter always sends the numeric id.
+_PATH_TYPE_ATTRIBUTES = "/ci_types/{type_id}/attributes"
 
 #: TTL (seconds) for the ci_types / attributes caches.  The upstream has
 #: no change notification, so a short TTL balances freshness against
 #: request volume (one upstream call per entry refresh).
 _CACHE_TTL_SECONDS = 60.0
-
-#: Page size requested for ``GET /attributes/s``.  The upstream default
-#: page is 50 entries, which truncates the global attribute dictionary
-#: on real deployments (210 entries on the intranet deployment,
-#: 2026-08); 500 was verified to be honoured there and keeps the fetch
-#: to a handful of pages.  The response carries no total count, so a
-#: short page is the end-of-data signal — a deployment that capped
-#: ``page_size`` below the requested value would truncate the fetch at
-#: its first page; no such cap was observed on the probed deployment.
-_ATTRIBUTES_PAGE_SIZE = 500
-
-#: Explicit type→prefix aliases for ci_types that *reuse another
-#: type's* attribute naming (a VeOps deployment convention the type
-#: name alone cannot express).  Verified against the intranet VeOps host
-#: deployment (2026-08): ``monitoring_component`` CIs carry
-#: ``middlewa_*`` attributes (e.g. ``middlewa_project``,
-#: ``middlewa_lifecycle_status``) because the type reuses the
-#: middleware attribute set — the naming convention (type name or its
-#: 8-character prefix) can never match those.  ``/ci_types`` entries
-#: carry no attribute list, so the naming convention is the only
-#: type→attribute mapping source and this alias table is the only way
-#: to cover such reuse.  Keep it small: add an entry only when a
-#: deployment actually reuses another type's prefix.
-_ATTR_PREFIX_ALIASES: dict[str, tuple[str, ...]] = {
-    "monitoring_component": ("middlewa_",),
-}
 
 #: Upstream page size of ``GET /ci/type/<type_id>``: the endpoint
 #: serves a *fixed* page of 50 entries — ``page`` is honoured but
@@ -155,11 +128,9 @@ class VeopsAdapter:
         # name -> raw ci_types entry (keeps alias/icon/etc. for display)
         self._type_payloads: dict[str, dict[str, Any]] = {}
         self._type_ids_fetched_at: float | None = None
-        # name -> (resolved ModelFields, fetched_at)
+        # model name -> (resolved ModelFields, fetched_at); one entry per
+        # ci_type, filled by :meth:`_fields_for_type` (60 s TTL).
         self._model_fields: dict[str, tuple[tuple[ModelField, ...], float]] = {}
-        # Raw global attribute dictionary (list of ModelField).
-        self._attribute_fields: tuple[ModelField, ...] | None = None
-        self._attributes_fetched_at: float | None = None
 
     # -- internals ---------------------------------------------------------
     def _read(self, fn: Callable[[], Any], *, operation: str) -> Any:
@@ -209,7 +180,11 @@ class VeopsAdapter:
             if isinstance(t, dict) and t.get("name") is not None
         }
         self._type_ids_fetched_at = now
-        self._assign_attributes()
+        # Drop the field cache of types this deployment no longer has;
+        # surviving types keep their own entry until its TTL expires.
+        self._model_fields = {
+            name: entry for name, entry in self._model_fields.items() if name in self._type_ids
+        }
 
     def _resolve_type_id(self, model_name: str) -> int:
         """Resolve a ci_type *name* to its numeric id (cached, 60 s TTL).
@@ -228,110 +203,83 @@ class VeopsAdapter:
             )
         return hit[0]
 
-    def _refresh_attributes(self) -> None:
-        """Fetch the *entire* global attribute dictionary (60 s TTL).
+    def _fields_for_type(self, type_name: str) -> tuple[ModelField, ...]:
+        """Resolve one ci_type's declared fields from its attribute
+        **binding list** (``GET /ci_types/<type_id>/attributes``).
 
-        ``GET /attributes/s`` is paginated upstream (default page 50;
-        ``page`` / ``page_size`` honoured), so a single unpaginated call
-        silently truncates the dictionary and leaves most model types
-        with ``fields=()`` (verified on the intranet deployment,
-        2026-08).  Pages are fetched in order (``page=1,2,...``) until
-        a short or empty page arrives (the response carries no total
-        count, so a short page is the end-of-data signal); a total
-        that is an exact multiple of the requested page size costs one
-        extra request that returns the terminating empty page.  A page
-        that adds no
-        new attribute also terminates the loop (a guard against an
-        upstream that repeats the same page instead of advancing).
+        This is the only authoritative type→attribute mapping the upstream
+        offers.  ``GET /ci_types`` answers no attribute list, and the
+        global ``GET /attributes/s`` dictionary carries no binding at all
+        — an earlier release inferred the binding from the deployment's
+        attribute-naming convention (``credential`` → ``credenti_*``) plus
+        a hand-maintained type→prefix alias table.  That heuristic was
+        falsified on the intranet deployment (2026-09-21): attributes
+        are **not namespaced per type**, so ``business_system`` (2 bound
+        attributes) was reported with 29 fields borrowed from
+        ``business_application`` while ``runtime_platform`` (31 bound) and
+        ``monitoring_component`` (27, all ``middlewa_*``) were reported
+        wrong or empty.  There is deliberately **no fallback** to the
+        naming convention here: a wrong field list is worse than an error.
+
+        The binding list also carries what the global dictionary cannot:
+        the per-binding ``is_required`` (``required`` is a property of the
+        *binding*, not of the attribute — ``c_attributes`` has no such
+        column) and the server-resolved ``choice_value`` enumeration, so
+        ``required`` and ``enum_values`` become real metadata instead of
+        defaults.  Inherited attributes are included and the whole list
+        arrives in the upstream's ``(order, id)`` sequence, which is kept.
+
+        Results are cached per model name under :data:`_CACHE_TTL_SECONDS`.
+
+        Raises:
+            ValidationError: when ``type_name`` is unknown to the
+                deployment (from :meth:`_resolve_type_id`).
+            CoreError: any upstream failure of the binding call, propagated
+                unchanged so ``list_models`` surfaces it.
         """
-        fields: list[ModelField] = []
-        seen_names: set[str] = set()
-        page = 1
-        while True:
-            payload = self._client.request(
-                "GET",
-                _PATH_ATTRIBUTES,
-                params={"page": page, "page_size": _ATTRIBUTES_PAGE_SIZE},
-            )
-            batch = mapper.map_attributes(payload)
-            fresh = [f for f in batch if f.name not in seen_names]
-            for f in fresh:
-                seen_names.add(f.name)
-            fields.extend(fresh)
-            if len(batch) < _ATTRIBUTES_PAGE_SIZE or not fresh:
-                break
-            page += 1
-        self._attribute_fields = tuple(fields)
-        self._attributes_fetched_at = self._now()
+        hit = self._model_fields.get(type_name)
+        if hit is not None and self._now() - hit[1] < _CACHE_TTL_SECONDS:
+            return hit[0]
+        type_id = self._resolve_type_id(type_name)
+        payload = self._client.request("GET", _PATH_TYPE_ATTRIBUTES.format(type_id=type_id))
+        fields = tuple(mapper.map_type_attributes(payload))
+        self._model_fields[type_name] = (fields, self._now())
+        return fields
 
-    def _attributes_available(self) -> bool:
-        if self._attributes_fetched_at is None:
-            return False
-        return self._now() - self._attributes_fetched_at < _CACHE_TTL_SECONDS
+    def _best_effort_fields(self, type_name: str) -> tuple[ModelField, ...]:
+        """Field list for *instance* mapping, degrading to ``()`` when the
+        binding lookup fails.
 
-    def _ensure_attributes(self) -> None:
-        if not self._attributes_available():
-            try:
-                self._refresh_attributes()
-            except CoreError:
-                # The attribute dictionary is best-effort: if it is
-                # unavailable, models keep ``fields=()`` rather than
-                # failing the whole call.
-                self._attribute_fields = ()
-                self._attributes_fetched_at = self._now()
-
-    def _assign_attributes(self) -> None:
-        """Populate :attr:`_model_fields` from the (lazily refreshed)
-        ci_types + global attribute caches.  Matching is by the
-        deployment's naming convention: an attribute belongs to a type
-        when its name starts with ``<type>_`` or with an 8-character
-        prefix of the type name (``credential`` → ``credenti_*``), or
-        when it starts with one of the type's explicit prefix aliases
-        from :data:`_ATTR_PREFIX_ALIASES` (types that reuse another
-        type's attribute naming).  Types with no match get
-        ``fields=()``."""
-        self._ensure_attributes()
-        now = self._now()
-        out: dict[str, tuple[tuple[ModelField, ...], float]] = {}
-        attrs = self._attribute_fields or ()
-        for name in self._type_ids:
-            candidates = tuple(f for f in attrs if self._attr_matches_type(f.name, name))
-            out[name] = (candidates, now)
-        self._model_fields = out
-
-    @staticmethod
-    def _attr_matches_type(attr_name: str, type_name: str) -> bool:
-        if not attr_name or not type_name:
-            return False
-        if attr_name == type_name or attr_name.startswith(f"{type_name}_"):
-            return True
-        short = type_name[:8]
-        if len(short) >= 6 and attr_name.startswith(f"{short}_"):
-            return True
-        return any(
-            attr_name.startswith(alias) for alias in _ATTR_PREFIX_ALIASES.get(type_name, ())
-        )
+        Empty is safe on this path: :func:`.mapper.map_ci` only *restricts*
+        ``data`` to the declared fields when it has a non-empty list, so an
+        unavailable binding never drops instance values — it only stops
+        the vendor-key quarantine.  ``list_models`` is the opposite case
+        (the fields *are* the product) and must not swallow the error.
+        """
+        try:
+            return self._fields_for_type(type_name)
+        except CoreError:
+            return ()
 
     def _known_fields(self, model_name: str) -> tuple[str, ...]:
-        """Field names for a model (best effort, cached 60 s)."""
-        hit = self._model_fields.get(model_name)
-        if (
-            hit is not None
-            and self._attributes_fetched_at is not None
-            and self._now() - self._attributes_fetched_at < _CACHE_TTL_SECONDS
-        ):
-            return tuple(f.name for f in hit[0])
-        self._refresh_ci_types()
-        hit = self._model_fields.get(model_name)
-        return tuple(f.name for f in hit[0]) if hit else ()
+        """Field names for a model (best effort, cached per model 60 s).
+
+        One binding-list request per model per TTL, so instance/search
+        reads pay for the model they touch — not for the whole
+        dictionary.
+        """
+        return tuple(f.name for f in self._best_effort_fields(model_name))
 
     # -- the seven protocol operations ------------------------------------
     def list_models(self) -> list[CMDBModel]:
         def _one() -> list[CMDBModel]:
             self._refresh_ci_types()
+            # One binding-list request per model (12 on the probed
+            # deployment, ~1 s warm).  Failures propagate on purpose: a
+            # silently wrong field list would have agents write garbage.
+            fields_by_name = {name: self._fields_for_type(name) for name in self._type_ids}
             return mapper.map_ci_types(
-                {"ci_types": self._type_ids_names()},
-                {name: f for name, (f, _at) in self._model_fields.items()},
+                {"ci_types": self._type_ids_names()}, fields_by_name
             )
 
         result = self._read(_one, operation="list_models")

@@ -4,8 +4,8 @@ transport that emulates the *real* VeOps 2.6.2 contract (no network).
 Covers the seven protocol methods, the verified quirks (full-page
 instance listing that the adapter pages through in full, search
 pagination + client-side filtering, list-wrapped ci_types, untyped
-second_cis, the paginated global attribute dictionary and its
-attribute-prefix reuse aliases),
+second_cis, the per-type attribute *binding list* as the sole field
+source),
 error-category preservation, and the read-vs-write retry policy.  The
 transport enforces ``_key``/``_secret`` signature verification with the
 production :func:`sign` — a signing regression shows up as 401 in these
@@ -14,7 +14,6 @@ tests.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -46,16 +45,68 @@ CI_TYPES = {
     ],
 }
 
-# The global attribute dictionary (subset of the real one).
-ATTRIBUTES = {
+# The per-type attribute *binding lists* (``GET /ci_types/<id>/attributes``).
+# The real payload repeats the whole global attribute record per entry; the
+# mapper only needs name / alias / value_type / is_required / choice_value.
+QUICK_REFERENCE_ATTRIBUTES = {
+    "type_id": 1,
+    "unique_id": 3,
+    "unique": "quick_re_source_key",
     "attributes": [
-        {"name": "quick_re_title", "alias": "快速查询与联查", "value_type": "2"},
-        {"name": "quick_re_content", "alias": "内容", "value_type": "2"},
-        {"name": "credenti_key_id", "alias": "凭据编号", "value_type": "2"},
-        {"name": "credenti_environment", "alias": "环境", "value_type": "2"},
-        {"name": "server_credential_id", "alias": "凭据编号", "value_type": "2"},
+        {
+            "name": "quick_re_title",
+            "alias": "快速查询与联查",
+            "value_type": "2",
+            "is_required": True,
+        },
+        {
+            "name": "quick_re_content",
+            "alias": "内容",
+            "value_type": "2",
+            "is_required": False,
+        },
     ],
 }
+
+CREDENTIAL_ATTRIBUTES = {
+    "type_id": 7,
+    "unique_id": 125,
+    "unique": "credenti_source_key",
+    "attributes": [
+        {
+            "name": "credenti_key_id",
+            "alias": "凭据编号",
+            "value_type": "2",
+            "is_required": True,
+        },
+        {
+            "name": "credenti_environment",
+            "alias": "环境",
+            "value_type": "2",
+            "is_choice": True,
+            "is_required": True,
+            # Verified shape (2026-09-21): [value, {label}] pairs.
+            "choice_value": [["生产", {"label": "生产"}], ["UAT", {"label": "UAT"}]],
+        },
+    ],
+}
+
+
+def _binding_routes() -> dict[tuple[str, str], Any]:
+    """Routes for the two ci_types in :data:`CI_TYPES` (id 1 / id 7)."""
+    return {
+        ("GET", f"{API}/ci_types/1/attributes"): QUICK_REFERENCE_ATTRIBUTES,
+        ("GET", f"{API}/ci_types/7/attributes"): CREDENTIAL_ATTRIBUTES,
+    }
+
+
+def _bound(*names: str) -> dict[str, Any]:
+    """A minimal binding-list payload from bare attribute names."""
+    return {
+        "attributes": [
+            {"name": n, "alias": n, "value_type": "2", "is_required": False} for n in names
+        ]
+    }
 
 CIS = {
     "cis": [
@@ -92,7 +143,7 @@ class TestListModels:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                **_binding_routes(),
             },
             {},
         )
@@ -100,32 +151,44 @@ class TestListModels:
         models = adapter.list_models()
         assert [m.name for m in models] == ["quick_reference", "credential"]
         assert models[0].display_name == "快速查询"
-        # credential's attributes resolve via the credenti_* convention.
+        # credential's fields come from its own binding list.
         assert [f.name for f in models[1].fields] == [
             "credenti_key_id",
             "credenti_environment",
         ]
 
-    def test_list_models_attributes_unavailable_degrades(self) -> None:
+    def test_list_models_binding_failure_propagates(self) -> None:
+        """A failed binding lookup must surface, never be papered over.
+
+        Guessing the mapping from the attribute naming convention is what
+        produced the 2026-09-21 wrong-field incident (``business_system``
+        reported 29 of ``business_application``'s fields and 0 of its own
+        2), so the adapter has no fallback path any more.
+        """
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): (500, {"error": "boom"}),
+                ("GET", f"{API}/ci_types/7/attributes"): CREDENTIAL_ATTRIBUTES,
+                ("GET", f"{API}/ci_types/1/attributes"): (500, {"error": "boom"}),
             },
             {},
         )
-        adapter, _ = build_adapter(transport)
-        models = adapter.list_models()
-        # Best-effort: models still listed, fields empty.
-        assert [m.name for m in models] == ["quick_reference", "credential"]
-        assert all(m.fields == () for m in models)
+        adapter, _ = build_adapter(transport, max_retries=2)
+        with pytest.raises(Exception) as exc:
+            adapter.list_models()
+        assert exc.value.category == ErrorCategory.UPSTREAM_SERVER
+        # The read retry budget was spent on the failing binding call...
+        failed = [r for r in transport.requests if r.url.path.endswith("/ci_types/1/attributes")]
+        assert len(failed) == 3
+        # ...and the fan-out stopped there instead of guessing.
+        assert not [r for r in transport.requests if "7/attributes" in r.url.path]
 
 
 class TestGetInstances:
     def _transport(self, **overrides):
         handlers = {
             ("GET", f"{API}/ci_types"): CI_TYPES,
-            ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+            **_binding_routes(),
             ("GET", f"{API}/ci/type/1"): CIS,
         }
         handlers.update(overrides)
@@ -199,7 +262,7 @@ class TestGetInstances:
         }
         handlers = {
             ("GET", f"{API}/ci_types"): CI_TYPES,
-            ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+            **_binding_routes(),
             ("GET", f"{API}/ci/type/1"): cis,
         }
         adapter, _ = build_adapter(_RecordingTransport(handlers, {}))
@@ -216,7 +279,7 @@ class TestSearch:
     def _transport(self, page_payload):
         handlers = {
             ("GET", f"{API}/ci_types"): CI_TYPES,
-            ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+            **_binding_routes(),
             ("GET", f"{API}/ci/search"): page_payload,
         }
         return _RecordingTransport(handlers, {})
@@ -280,7 +343,7 @@ class TestSearch:
 
         handlers = {
             ("GET", f"{API}/ci_types"): CI_TYPES,
-            ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+            **_binding_routes(),
             ("GET", f"{API}/ci/search"): handler,
         }
         adapter, _ = build_adapter(_RecordingTransport(handlers, {}))
@@ -296,7 +359,7 @@ class TestSearch:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                **_binding_routes(),
             },
             {},
         )
@@ -357,7 +420,7 @@ class TestWriteMethods:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                **_binding_routes(),
                 ("POST", f"{API}/ci"): {"ci_id": 900},
             },
             {},
@@ -390,7 +453,7 @@ class TestWriteMethods:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                **_binding_routes(),
                 ("POST", f"{API}/ci"): {
                     "_id": 901,
                     "_type": 7,
@@ -431,7 +494,7 @@ class TestWriteMethods:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                **_binding_routes(),
                 ("POST", f"{API}/ci"): {"ci_id": 3262},
             },
             {},
@@ -467,7 +530,7 @@ class TestRetryPolicy:
             CI_TYPES,
         ]
         transport = _RecordingTransport(
-            {"GET".join(()) if False else ("GET", f"{API}/attributes/s"): ATTRIBUTES},
+            {**_binding_routes()},
             (200, CI_TYPES),
             scripts={("GET", f"{API}/ci_types"): responses},
         )
@@ -484,7 +547,7 @@ class TestRetryPolicy:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                **_binding_routes(),
             },
             (500, {"error": "boom"}),
             require_signature=False,
@@ -562,7 +625,7 @@ class TestReadOnlyMode:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                **_binding_routes(),
                 ("GET", f"{API}/ci/type/1"): CIS,
                 ("GET", f"{API}/ci/search"): {"total": 0, "result": []},
             },
@@ -619,7 +682,7 @@ class TestReadOnlyMode:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): CI_TYPES,
-                ("GET", f"{API}/attributes/s"): ATTRIBUTES,
+                **_binding_routes(),
                 ("POST", f"{API}/ci"): {"ci_id": 3263},
             },
             {},
@@ -630,222 +693,125 @@ class TestReadOnlyMode:
         )
         assert inst.instance_id == "3263"
 
+class TestModelFieldsFromBindings:
+    """The 0.2.7 contract: a model's ``fields`` come from the type's
+    attribute **binding list** and from nothing else.
 
-# ---------------------------------------------------------------------------
-# /attributes/s pagination (verified 2026-08 on the intranet VeOps host
-# deployment: the endpoint is paginated — default page 50, ``page`` /
-# ``page_size`` honoured, 210 entries total; an unpaginated call
-# truncated the dictionary to its first page)
-# ---------------------------------------------------------------------------
+    Regression guard for the 2026-09-21 production finding on the
+    intranet deployment: attributes are *not* namespaced per type,
+    so the naming heuristic reported ``business_system`` (2 bound
+    attributes) with 29 borrowed ``business_*``/``app_*`` fields, and
+    ``monitoring_component`` / ``runtime_platform`` (27 + 31 bound,
+    almost all ``middlewa_*``) wrong or empty.
+    """
 
-QUICK_RE_FIELDS = (
-    "quick_re_title",
-    "quick_re_content",
-) + tuple(f"quick_re_{i:03d}" for i in range(1, 5))
-SOURCE_DO_FIELDS = tuple(f"source_d_{i:03d}" for i in range(1, 12))
-SERVER_FIELDS = tuple(f"server_{i:03d}" for i in range(1, 21))
-BUSINESS_APP_FIELDS = tuple(f"business_{i:03d}" for i in range(1, 14))
-MIDDLEWA_FIELDS = (
-    "middlewa_project",
-    "middlewa_lifecycle_status",
-) + tuple(f"middlewa_{i:03d}" for i in range(1, 24))
-CREDENTI_FIELDS = (
-    "credenti_key_id",
-    "credenti_environment",
-) + tuple(f"credenti_{i:03d}" for i in range(1, 7))
-OPERATIO_FIELDS = tuple(f"operatio_{i:03d}" for i in range(1, 11))
-
-
-def _attribute(name: str) -> dict[str, Any]:
-    return {"name": name, "alias": name, "value_type": "2"}
-
-
-def _attrs(prefix: str, count: int, named: tuple[str, ...] = ()) -> list[dict[str, Any]]:
-    """``count`` attributes under ``<prefix>_``; ``named`` fills the
-    first slots with exact attribute names, the rest are zero-padded."""
-    names = list(named)
-    names += [f"{prefix}_{i:03d}" for i in range(1, count - len(named) + 1)]
-    return [_attribute(n) for n in names]
-
-
-def _paginated_ci_types() -> dict[str, Any]:
-    """Eight ci_types mirroring the intranet deployment's naming
-    (a subset of its 13); ``runtime_platform`` is deliberately absent so
-    the ``runtime_*`` attributes stay unmatched by any type."""
-    return {
-        "numfound": 8,
-        "ci_types": [
-            {"id": 1, "name": "quick_reference", "alias": "快速查询"},
-            {"id": 2, "name": "source_document", "alias": "源文档"},
-            {"id": 3, "name": "server", "alias": "服务器"},
-            {"id": 4, "name": "business_application", "alias": "业务应用"},
-            {"id": 5, "name": "middleware", "alias": "中间件"},
-            {"id": 6, "name": "credential", "alias": "配置与凭据"},
-            {"id": 7, "name": "operation_runbook", "alias": "运维手册"},
-            {"id": 8, "name": "monitoring_component", "alias": "监控组件"},
-        ],
-    }
-
-
-def _master_attributes_1200() -> list[dict[str, Any]]:
-    """1200 attributes → three pages for a page_size=500 request
-    (500/500/200).  The first 50 slots hold exactly what the old
-    unpaginated fetch saw (quick_reference 6 + source_document 11 +
-    server 20 + business_application 13); the middleware / credential /
-    operation_runbook attributes only appear on page 2, reproducing the
-    2026-08-28 production truncation."""
-    return (
-        _attrs("quick_re", 6, ("quick_re_title", "quick_re_content"))
-        + _attrs("source_d", 11)
-        + _attrs("server", 20)
-        + _attrs("business", 13)
-        + _attrs("pad1_x", 450)
-        + _attrs("middlewa", 25, ("middlewa_project", "middlewa_lifecycle_status"))
-        + _attrs("credenti", 8, ("credenti_key_id", "credenti_environment"))
-        + _attrs("operatio", 10)
-        + _attrs("runtime", 7)
-        + _attrs("pad2_x", 450)
-        + _attrs("misc_x", 20)
-        + _attrs("pad3_x", 180)
-    )
-
-
-def _attributes_pages_handler(
-    master: list[dict[str, Any]],
-) -> Callable[[httpx.Request], httpx.Response]:
-    """Emulates the real ``GET /attributes/s`` contract: paginated, with
-    the upstream default page of 50 and ``page`` / ``page_size``
-    honoured (verified 2026-08)."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        page = int(request.url.params.get("page", "1"))
-        page_size = int(request.url.params.get("page_size", "50"))
-        start = (page - 1) * page_size
-        return httpx.Response(200, json={"attributes": master[start : start + page_size]})
-
-    return handler
-
-
-class TestAttributesPagination:
-    """The global attribute dictionary must be fetched *in full* across
-    pages, with the terminating edges (short page, exact page multiple,
-    single page, repeated page) all bounded."""
-
-    def _transport(self, master: list[dict[str, Any]]) -> _RecordingTransport:
-        return _RecordingTransport(
-            {
-                ("GET", f"{API}/ci_types"): _paginated_ci_types(),
-                ("GET", f"{API}/attributes/s"): _attributes_pages_handler(master),
-            },
-            {},
-        )
-
-    def _attribute_requests(self, transport: _RecordingTransport) -> list[httpx.Request]:
-        return [r for r in transport.requests if r.url.path.endswith("/attributes/s")]
-
-    def test_get_models_resolves_fields_from_all_pages(self) -> None:
-        transport = self._transport(_master_attributes_1200())
-        adapter, _ = build_adapter(transport)
-        models = {m.name: m for m in adapter.list_models()}
-        assert list(models) == [
-            "quick_reference",
-            "source_document",
-            "server",
-            "business_application",
-            "middleware",
-            "credential",
-            "operation_runbook",
-            "monitoring_component",
-        ]
-        # First-page types keep their complete sets...
-        assert [f.name for f in models["quick_reference"].fields] == list(QUICK_RE_FIELDS)
-        assert [f.name for f in models["source_document"].fields] == list(SOURCE_DO_FIELDS)
-        assert [f.name for f in models["server"].fields] == list(SERVER_FIELDS)
-        assert [f.name for f in models["business_application"].fields] == list(BUSINESS_APP_FIELDS)
-        # ...and the types the old unpaginated fetch truncated now
-        # resolve from page 2.
-        assert [f.name for f in models["middleware"].fields] == list(MIDDLEWA_FIELDS)
-        assert [f.name for f in models["credential"].fields] == list(CREDENTI_FIELDS)
-        assert [f.name for f in models["operation_runbook"].fields] == list(OPERATIO_FIELDS)
-        # monitoring_component reuses the middleware prefix (alias table).
-        assert [f.name for f in models["monitoring_component"].fields] == list(MIDDLEWA_FIELDS)
-        # Orphan attributes (no ci_type in this deployment) must not leak
-        # into any model.
-        for m in models.values():
-            for f in m.fields:
-                assert not f.name.startswith(
-                    ("pad1_x", "pad2_x", "pad3_x", "misc_x", "runtime")
-                )
-        # The loop paged 1..3 (500/500/200) with its requested page size.
-        attr_requests = self._attribute_requests(transport)
-        assert [r.url.params.get("page") for r in attr_requests] == ["1", "2", "3"]
-        assert [r.url.params.get("page_size") for r in attr_requests] == ["500"] * 3
-
-    def test_exact_page_multiple_terminates_on_empty_page(self) -> None:
-        # 1000 attributes = exactly two full pages of 500: the loop must
-        # issue a third request, receive the empty page, and stop there
-        # (no fourth request, no lost/duplicated fields).
-        master = _attrs("quick_re", 500) + _attrs("server", 500)
-        transport = self._transport(master)
-        adapter, _ = build_adapter(transport)
-        models = {m.name: m for m in adapter.list_models()}
-        attr_requests = self._attribute_requests(transport)
-        assert [r.url.params.get("page") for r in attr_requests] == ["1", "2", "3"]
-        assert len(models["quick_reference"].fields) == 500
-        assert len(models["server"].fields) == 500
-
-    def test_single_page_issues_one_request(self) -> None:
-        # A dictionary smaller than one page must not trigger a second
-        # (wasted) page fetch.
-        master = _attrs("quick_re", 10) + _attrs("server", 20)
-        transport = self._transport(master)
-        adapter, _ = build_adapter(transport)
-        models = {m.name: m for m in adapter.list_models()}
-        attr_requests = self._attribute_requests(transport)
-        assert [r.url.params.get("page") for r in attr_requests] == ["1"]
-        assert len(models["quick_reference"].fields) == 10
-        assert len(models["server"].fields) == 20
-
-    def test_repeated_page_terminates(self) -> None:
-        # Guard against an upstream that repeats a page instead of
-        # advancing: a page that adds no new attribute stops the loop
-        # (and its entries are not duplicated into the dictionary).
-        page = [_attribute(f"middlewa_{i:03d}") for i in range(1, 501)]
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"attributes": page})
-
+    def test_global_attribute_dictionary_is_never_called(self) -> None:
         transport = _RecordingTransport(
             {
-                ("GET", f"{API}/ci_types"): _paginated_ci_types(),
-                ("GET", f"{API}/attributes/s"): handler,
+                ("GET", f"{API}/ci_types"): CI_TYPES,
+                **_binding_routes(),
+                ("GET", f"{API}/ci/type/1"): CIS,
+            },
+            {},
+        )
+        adapter, _ = build_adapter(transport)
+        adapter.list_models()
+        adapter.get_instances("quick_reference", page_size=10, cursor=None, filters={})
+        assert [r.url.path for r in transport.requests].count(f"{API}/attributes/s") == 0
+
+    def test_binding_list_wins_over_the_naming_convention(self) -> None:
+        """Foreign-prefixed attributes are reported when they are bound,
+        and own-prefixed ones are dropped when they are not."""
+        ci_types = {
+            "numfound": 2,
+            "ci_types": [
+                {"id": 9, "name": "business_system", "alias": "业务系统"},
+                {"id": 10, "name": "monitoring_component", "alias": "监控组件"},
+            ],
+        }
+        transport = _RecordingTransport(
+            {
+                ("GET", f"{API}/ci_types"): ci_types,
+                # business_system really only binds these two...
+                ("GET", f"{API}/ci_types/9/attributes"): _bound("system_name", "system_source"),
+                # ...while these business_*/app_* names belong to nobody here.
+                ("GET", f"{API}/ci_types/10/attributes"): _bound(
+                    "middlewa_project", "middlewa_lifecycle_status"
+                ),
             },
             {},
         )
         adapter, _ = build_adapter(transport)
         models = {m.name: m for m in adapter.list_models()}
-        attr_requests = self._attribute_requests(transport)
-        assert [r.url.params.get("page") for r in attr_requests] == ["1", "2"]
-        assert len(models["middleware"].fields) == 500
+        assert [f.name for f in models["business_system"].fields] == [
+            "system_name",
+            "system_source",
+        ]
+        # monitoring_component reuses the middleware attribute set: bound
+        # names it is, even though they can never match its own name.
+        assert [f.name for f in models["monitoring_component"].fields] == [
+            "middlewa_project",
+            "middlewa_lifecycle_status",
+        ]
+        # One binding request per model, no dictionary fetch.
+        assert len([r for r in transport.requests if r.url.path.endswith("/attributes")]) == 2
 
+    def test_required_and_enum_come_from_the_binding_row(self) -> None:
+        adapter, _ = build_adapter(
+            _RecordingTransport(
+                {
+                    ("GET", f"{API}/ci_types"): CI_TYPES,
+                    **_binding_routes(),
+                },
+                {},
+            )
+        )
+        models = {m.name: m for m in adapter.list_models()}
+        key_id, environment = models["credential"].fields
+        assert (key_id.name, key_id.required) == ("credenti_key_id", True)
+        assert key_id.enum_values is None
+        assert environment.enum_values == ("生产", "UAT")
+        assert environment.required is True
+        assert environment.description == "环境"
 
-class TestAttrTypeMatching:
-    """The type→attribute matcher: naming convention (type name or its
-    8-character prefix) plus the explicit prefix-alias table for types
-    that reuse another type's attribute naming."""
+    def test_fields_are_cached_per_model(self) -> None:
+        transport = _RecordingTransport(
+            {
+                ("GET", f"{API}/ci_types"): CI_TYPES,
+                **_binding_routes(),
+            },
+            {},
+        )
+        adapter, _ = build_adapter(transport)
+        first = {m.name: m for m in adapter.list_models()}
+        second = {m.name: m for m in adapter.list_models()}
+        # ci_types is refreshed on every call (it is the model list
+        # itself); the per-model binding lists are not -- the TTL cache
+        # answers the second call with zero extra requests.
+        assert [r.url.path for r in transport.requests].count(f"{API}/ci_types") == 2
+        binding_calls = [r for r in transport.requests if r.url.path.endswith("/attributes")]
+        assert len(binding_calls) == 2
+        assert [f.name for f in first["credential"].fields] == [
+            "credenti_key_id",
+            "credenti_environment",
+        ]
+        assert [f.name for f in second["credential"].fields] == [
+            f.name for f in first["credential"].fields
+        ]
 
-    def test_alias_prefix_matches_monitoring_component(self) -> None:
-        assert VeopsAdapter._attr_matches_type("middlewa_project", "monitoring_component")
-        assert VeopsAdapter._attr_matches_type("middlewa_lifecycle_status", "monitoring_component")
-
-    def test_alias_does_not_leak_to_other_types(self) -> None:
-        assert not VeopsAdapter._attr_matches_type("middlewa_project", "server")
-        assert not VeopsAdapter._attr_matches_type("middlewa_project", "credential")
-        assert not VeopsAdapter._attr_matches_type("middlewa_project", "operation_runbook")
-
-    def test_own_prefix_still_matches(self) -> None:
-        # middleware owns middlewa_* (8-character prefix of its name)...
-        assert VeopsAdapter._attr_matches_type("middlewa_project", "middleware")
-        # ...and operation_runbook matches via its 8-character prefix.
-        assert VeopsAdapter._attr_matches_type("operatio_001", "operation_runbook")
-        assert not VeopsAdapter._attr_matches_type("operatio_001", "monitoring_component")
+    def test_instance_read_degrades_when_binding_unavailable(self) -> None:
+        """``get_instances`` keeps its values even with no field list:
+        an empty ``known_fields`` never restricts ``data``."""
+        transport = _RecordingTransport(
+            {
+                ("GET", f"{API}/ci_types"): CI_TYPES,
+                ("GET", f"{API}/ci_types/1/attributes"): (500, {"error": "boom"}),
+                ("GET", f"{API}/ci/type/1"): CIS,
+            },
+            {},
+        )
+        adapter, _ = build_adapter(transport, max_retries=0)
+        page = adapter.get_instances("quick_reference", page_size=10, cursor=None, filters={})
+        assert len(page.items) == 2
+        (inst,) = [i for i in page.items if i.instance_id == "514"]
+        assert inst.data["quick_re_title"] == "用途"

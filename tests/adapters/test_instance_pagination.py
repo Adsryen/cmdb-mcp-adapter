@@ -89,7 +89,8 @@ class TestInstancePagination:
         return _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): _ci_type_payload(),
-                ("GET", f"{API}/attributes/s"): {"attributes": []},
+                # Empty binding list: the instance values are the subject here.
+                ("GET", f"{API}/ci_types/1/attributes"): {"attributes": []},
                 ("GET", f"{API}/ci/type/1"): _instance_pages_handler(master),
             },
             {},
@@ -169,7 +170,8 @@ class TestInstancePagination:
         transport = _RecordingTransport(
             {
                 ("GET", f"{API}/ci_types"): _ci_type_payload(),
-                ("GET", f"{API}/attributes/s"): {"attributes": []},
+                # Empty binding list: the instance values are the subject here.
+                ("GET", f"{API}/ci_types/1/attributes"): {"attributes": []},
                 ("GET", f"{API}/ci/type/1"): handler,
             },
             {},

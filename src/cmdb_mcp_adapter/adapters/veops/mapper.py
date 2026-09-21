@@ -22,10 +22,20 @@ deployment (2026-08; see ``docs/veops-adapter.md``):
 * ``GET /ci_relations/<id>/second_cis`` (and ``/first_cis``) return
   ``{numfound, total, page, second_cis: [...]}`` — flat instance dicts,
   **without** a ``relation_type_id``.
-* ``GET /attributes/s`` returns ``{"attributes": [ ... ]}`` — the global
-  attribute dictionary (every attribute of every type, with ``name`` /
-  ``alias`` / ``value_type`` / ``is_choice`` / ``choice`` /
-  ``is_unique`` / ...).
+* ``GET /ci_types/<type_id>/attributes`` returns
+  ``{"attributes": [ ... ], "type_id": n, "unique_id": n, "unique": n}``
+  — the type's **attribute binding list**, i.e. the authoritative
+  type→attribute mapping.  Each entry is the global attribute record
+  (``name`` / ``alias`` / ``value_type`` / ``is_choice`` / ``is_unique``
+  / ...) enriched with the *per-binding* ``is_required`` / ``order`` /
+  ``default_show`` / ``inherited`` flags and, for choice attributes, the
+  server-resolved ``choice_value`` pairs (``[[value, {"label": …}], …]``).
+  The list is already sorted by ``(order, id)`` and includes inherited
+  attributes; it is not paginated upstream.
+* ``GET /attributes/s`` returns the *global* attribute dictionary, with
+  no type binding on any entry — useless for field resolution (see
+  ``docs/veops-adapter.md``, "Model fields"); the adapter has not called
+  it since 0.2.7.
 * ``GET /relation_types`` returns a **bare array** ``[{id, name, ...}]``.
 
 Vendor-specific values are never placed into normalized fields: VeOps
@@ -92,12 +102,11 @@ def map_ci_type(
 ) -> CMDBModel:
     """Map one VeOps ``ci_types[]`` entry onto a :class:`CMDBModel`.
 
-    ``fields`` are the model's declared attributes (see
-    :func:`map_attribute`).  The ci_type payload itself carries no
-    attribute list (verified: the single-type lookup does not add one),
-    so the adapter passes fields resolved from the global
-    ``/attributes/s`` dictionary where possible — and an empty tuple
-    (with a documented metadata annotation) where it cannot.
+    ``fields`` are the model's declared attributes, resolved by the
+    adapter from the type's binding list (see :func:`map_type_attribute`):
+    the ci_type payload itself carries no attribute list (verified: the
+    single-type lookup does not add one).  A model whose binding list
+    could not be fetched degrades to ``fields=()``.
     """
     alias = raw.get("alias")
     return CMDBModel(
@@ -116,8 +125,8 @@ def map_ci_types(
     models.
 
     ``fields_by_name`` optionally supplies, per ci_type *name*, the
-    attributes declared for it (from the global ``/attributes/s``
-    dictionary).  Entries with no match get ``fields=()``.
+    attributes declared for it (from the type's binding list).  Entries
+    with no match get ``fields=()``.
     """
     raws = payload.get("ci_types") or []
     fields_by_name = fields_by_name or {}
@@ -130,44 +139,69 @@ def map_ci_types(
     return models
 
 
-def map_attribute(raw: dict[str, Any]) -> ModelField | None:
-    """Map one ``/attributes/s`` entry onto a :class:`ModelField`.
+def _choice_value_to_enum(raw: Any) -> tuple[str, ...] | None:
+    """Normalise the upstream ``choice_value`` list into enum members.
 
-    The global attribute dictionary carries no *required* flag (required-
-    ness is per-calculation in VeOps, not per-attribute), so
-    ``required`` is always ``False``.  Choice attributes expose their
-    allowed values as ``enum_values`` (the ``choice`` field holds a
-    comma-separated string in the API).  Returns ``None`` for entries
-    without a usable name.
+    ``/ci_types/<type_id>/attributes`` resolves enumerations server-side
+    (choice table, webhook or CI-backed source) and answers a list of
+    ``[value, option]`` pairs — verified 2026-09-21 on the
+    intranet deployment: ``[["生产", {"label": "生产"}],
+    ["UAT", {…}], …]``.
+    Only ``value`` is a *storable* value; the ``option`` label is display
+    text, so the pairs are projected onto their first element.
+
+    Returns ``None`` — never an empty tuple — when nothing is known:
+    a non-choice attribute carries no ``choice_value`` key at all, and a
+    choice attribute whose webhook is currently unreachable answers
+    ``[]``.  Both mean "no constraint is known", which is *not* the same
+    claim as "no value is allowed".
+    """
+    if not isinstance(raw, (list, tuple)) or not raw:
+        return None
+    values: list[str] = []
+    for item in raw:
+        candidate: Any = item[0] if isinstance(item, (list, tuple)) and item else item
+        if candidate is None or isinstance(candidate, (dict, list, tuple)):
+            continue
+        text = str(candidate).strip()
+        if text and text not in values:
+            values.append(text)
+    return tuple(values) or None
+
+
+def map_type_attribute(raw: dict[str, Any]) -> ModelField | None:
+    """Map one ``/ci_types/<type_id>/attributes`` entry onto a
+    :class:`ModelField`.
+
+    ``required`` comes from the **binding** row's ``is_required`` (the
+    global attribute dictionary has no such column: required-ness in
+    VeOps is per type×attribute, not per attribute).  ``enum_values``
+    comes from the resolved ``choice_value`` list (see
+    :func:`_choice_value_to_enum`).  Returns ``None`` for entries without
+    a usable name.
     """
     name = str(raw.get("name") or "")
     if not name:
         return None
-    enum: tuple[str, ...] | None = None
-    if raw.get("is_choice"):
-        choice = raw.get("choice")
-        if isinstance(choice, str) and choice:
-            enum = tuple(part.strip() for part in choice.split(",") if part.strip())
-        elif isinstance(choice, (list, tuple)) and choice:
-            enum = tuple(str(c) for c in choice)
     alias = raw.get("alias")
     return ModelField(
         name=name,
         type=_value_type_to_core(raw.get("value_type")),
-        required=False,
+        required=bool(raw.get("is_required")),
         description=str(alias or ""),
-        enum_values=enum,
+        enum_values=_choice_value_to_enum(raw.get("choice_value")),
     )
 
 
-def map_attributes(payload: dict[str, Any]) -> list[ModelField]:
-    """Map a ``GET /attributes/s`` payload onto a field list (order kept)."""
+def map_type_attributes(payload: dict[str, Any]) -> list[ModelField]:
+    """Map a ``GET /ci_types/<type_id>/attributes`` payload onto a field
+    list.  The upstream's ``(order, id)`` sequence is preserved."""
     raws = payload.get("attributes") or []
     fields: list[ModelField] = []
     for raw in raws:
         if not isinstance(raw, dict):
             continue
-        field = map_attribute(raw)
+        field = map_type_attribute(raw)
         if field is not None:
             fields.append(field)
     return fields
@@ -411,8 +445,8 @@ __all__ = [
     "VENDOR_METADATA_PREFIX",
     "decode_search_cursor",
     "encode_search_cursor",
-    "map_attribute",
-    "map_attributes",
+    "map_type_attribute",
+    "map_type_attributes",
     "map_ci",
     "map_ci_type",
     "map_ci_types",

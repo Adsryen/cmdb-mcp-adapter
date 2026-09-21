@@ -74,7 +74,7 @@ All paths are relative to `VEOPS_BASE_URL` plus `API_PREFIX`
 | MCP operation      | VeOps call                                        | Notes |
 |--------------------|---------------------------------------------------|-------|
 | `get_models`       | `GET /ci_types`                                   | `{"ci_types": [...], "numfound": N}` — list wrapper |
-| — (field lookup)   | `GET /ci_types/<name>` + `GET /attributes/s?page=&page_size=` | see "Model fields" below |
+| — (field lookup)   | `GET /ci_types/<type_id>/attributes`                | per-type **binding list**: the only source of `fields`, `required`, `enum_values` (see "Model fields" below) |
 | `get_instances`    | `GET /ci/type/<type_id>?page=`                    | `{"cis": [...], numfound, page, total, type_id}` — paginated upstream: fixed 50/page, `page_size` ignored, `numfound`/`total` are per-page counts; the adapter pages through all of them (see "Traps observed") |
 | `search_instances` | `GET /ci/search?q=&ci_type=&page=&page_size=`     | `{numfound, total, page, result: [...]}` |
 | `get_relations`    | `GET /ci_relations/<instance_id>/second_cis`      | `{numfound, total, page, second_cis: [...]}` (outbound edges; inbound is the symmetric `/first_cis`) |
@@ -108,48 +108,73 @@ All paths are relative to `VEOPS_BASE_URL` plus `API_PREFIX`
   the returned pages); `None` filter values match instances lacking
   that key.  The upstream search has no server-side attribute filter.
 
-### Model fields (best effort)
+### Model fields (from the type's binding list)
 
 `GET /ci_types` returns one entry per CI type with `id`/`name`/`alias`/
 `unique_key`/`enabled`/`icon`/`parent_ids` but **no attribute list**
 (the single-type lookup `GET /ci_types/<name>` is list-wrapped too and
-adds only `unique_name`).  The adapter therefore resolves each
-model's `fields` from the global attribute dictionary
-(`GET /attributes/s`, `{id, name, alias, value_type, is_choice,
-choice, ...}`).
+adds only `unique_name`).  The authoritative type→attribute mapping
+lives in the binding table (`c_ci_type_attributes`), and the upstream
+exposes it per type:
 
-**`GET /attributes/s` is paginated.**  The upstream serves a default
-page of 50 entries and honours `page` / `page_size` (verified
-2026-08-28 on the intranet deployment: 210 attributes in total,
-`page_size=500` returns them all in one page).  A single unpaginated
-call therefore truncates the dictionary to its first page and silently
-leaves most model types with `fields=()`.  The adapter pages through
-the endpoint (`page=1,2,...`, requesting `page_size=500`) until a
-short or empty page arrives — the response carries no total count, so
-a short page is the end-of-data signal (a deployment that capped
-`page_size` below the requested value would truncate the fetch at the
-first page; no such cap was observed in the 2026-08 probe).  A total
-that is an exact multiple of the page size costs one extra request
-(the terminating empty page), and a page that adds no new attribute
-also terminates the loop (a guard against an upstream that repeats a
-page).
+`GET /ci_types/<type_id>/attributes` →
+`{"attributes": [...], "type_id": n, "unique_id": n, "unique": "<name>"}`
 
-Matching uses the deployment's naming convention: an attribute
-belongs to a type when its name equals the type name, starts with
-`<type>_`, or starts with an 8-character prefix of the type name
-(`credential` → `credenti_*`, matching VeOps's attribute table).
-Some types **reuse another type's attribute naming**: on the
-intranet deployment (2026-08-28), `monitoring_component` CIs
-carry `middlewa_*` attributes (e.g. `middlewa_project`,
-`middlewa_lifecycle_status`) because the type reuses the middleware
-attribute set — the naming convention can never match those.  The
-matcher therefore also consults a small, explicit type→prefix alias
-table (`_ATTR_PREFIX_ALIASES` in `adapter.py`); add an entry there
-when a deployment reuses another type's prefix for yet another type.
+* One request per model; upstream also accepts the type *name* in the
+  `<type_id>` slot, the adapter always sends the numeric id.
+* **Not paginated** — the whole list arrives at once, already sorted by
+  `(order, id)`, and it includes attributes inherited from parent types
+  (`inherited` / `inherited_from`).
+* Each entry is the global attribute record (`name` / `alias` /
+  `value_type` / `is_choice` / `is_unique` / ...) enriched with the
+  *per-binding* flags `is_required` / `order` / `default_show`.  This is
+  therefore the only place the `required` marker can come from: the
+  attribute table itself has no such column, because required-ness in
+  VeOps belongs to the type×attribute row, not to the attribute.
+* For choice attributes the upstream resolves the enumeration
+  server-side and answers `choice_value` as `[value, option]` pairs
+  (verified 2026-09-21: `[["生产", {"label": "生产"}], ["UAT", {...}]]`).
+  The adapter projects them onto the *value* — the option label is
+  display text, not a storable value — and maps a missing or empty list
+  to `enum_values=None` ("no constraint known"), never an empty
+  enumeration: an unreachable webhook also answers `[]`.
 
-Types with no match get `fields=()`; both dictionaries are cached with
-a 60 s TTL.  This is a documented degradation — instance *values*
-still flow through `data` regardless of the `fields` metadata.
+**Do not rebuild this mapping from attribute names.**  Up to 0.2.6 the
+adapter read the *global* dictionary `GET /attributes/s` and assigned
+attributes to types by the deployment's naming convention (`<type>_`, an
+8-character prefix of the type name, plus a hand-maintained alias
+table).  Measured on the intranet deployment (2026-09-21; 12 types,
+265 binding rows) that inference mis-resolved 3 models:
+
+| model | real binding rows | naming heuristic returned |
+|-------|-------------------|---------------------------|
+| `business_system` | 2 | 29 — the whole `business_*` set of `business_application` |
+| `runtime_platform` | 31 | 0 — it binds `middlewa_*` rows, no prefix match |
+| `monitoring_component` | 27 | 30 — the whole `middlewa_*` set of `middleware` |
+
+The names genuinely do overlap across types (`monitoring_component`
+reuses 6 `middlewa_*` attributes, `runtime_platform` reuses 6 more), so
+no prefix rule or static alias table can express which subset belongs to
+which type.  The per-type binding endpoint has existed the whole time;
+reading the dictionary instead of it was simply the wrong tool.
+
+`GET /attributes/s` is paginated (default page 50, `page` / `page_size`
+honoured, no total in the payload) and its entries carry **no binding
+information at all**.  The adapter stopped calling it in 0.2.7.
+
+Cost and failure handling: the 12 calls run sequentially and cost
+~0.7–1.0 s warm on the probe deployment (37–161 ms each).  A cold
+upstream can stall one of them — a single `> 30 s` read timeout was
+observed once (8th type of the first probe of 2026-09-21, normal on
+retry) — so the lookups go through the client's retry policy and
+configured timeout.  On failure `list_models` **propagates** the error:
+the field list *is* its product, so a guessed or empty catalogue is
+worse than an explicit `upstream_*` error.  The instance-read paths
+(`get_instances` / `search_instances` / `get_relations`) instead degrade
+to `fields=()`, which is harmless: `map_ci` only *restricts* `data` to
+the declared fields when the list is non-empty, so instance values never
+disappear together with the metadata.  Each model's list is cached under
+the same 60 s TTL as the ci_types lookup.
 
 ### Instance payloads
 

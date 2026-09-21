@@ -5,6 +5,59 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [0.2.7] - 2026-09-21
+
+### Fixed
+
+* **`get_models` published the wrong field list for a model** — field
+  resolution used to read the *global* attribute dictionary
+  (`GET /attributes/s`) and assign each attribute to a type by the
+  deployment's naming convention (`<type>_`, an 8-character prefix of the
+  type name, plus a hand-maintained alias table).  The authoritative
+  mapping is the type's **binding list** (`c_ci_type_attributes`), which
+  the upstream exposes per type at
+  `GET /ci_types/<type_id>/attributes`; attribute names are shared across
+  types, so name inference cannot be correct in general.  Measured on the
+  intranet deployment (2026-09-21; 12 types, 265 binding rows):
+  `business_system` reported **29** fields (the whole `business_*` set of
+  `business_application`) against 2 real bindings, `runtime_platform`
+  reported **0** against 31 (it binds `middlewa_*` rows), and
+  `monitoring_component` reported 30 against 27.  Anything built on that
+  catalogue — e.g. an argument validator for a write tool — would have
+  accepted attributes that do not exist on the model.  `list_models` now
+  reads the binding list per model (fields match the table exactly) and
+  **propagates** a binding-lookup failure rather than publishing a
+  guessed or truncated catalogue; the instance-read paths still degrade
+  to `fields=()`, which only disables the vendor-key quarantine and never
+  drops values out of `data`.
+* **`enum_values` was always `null`** — the global dictionary's `choice`
+  field is empty on real deployments.  The resolved enumeration is only
+  available on the binding endpoint, as `choice_value` pairs
+  (`[["生产", {"label": "生产"}], ["UAT", {…}]]`).  The mapper projects
+  those onto their storable *value* (52 fields carry an enumeration on the
+  probe deployment) and keeps `enum_values=None` — never an empty tuple —
+  when nothing is known, because an empty choice list (e.g. an
+  unreachable webhook) means "no constraint known", not "no value
+  allowed".
+* **`required` was hardcoded `False`** — the attribute table has no such
+  column at all: required-ness in VeOps belongs to the type×attribute
+  binding row.  It now comes from that row's `is_required`.
+
+### Removed
+
+* `GET /attributes/s` is no longer called, so its client code is gone:
+  the page-500 paging loop added in 0.2.4 (`_ATTRIBUTES_PAGE_SIZE`), the
+  prefix-matching heuristic (`_attr_matches_type`) and the
+  `_ATTR_PREFIX_ALIASES` table.  The pagination was never the root cause
+  of the `fields=()` reports — the naming heuristic was.  The binding
+  endpoint is **not** paginated, so no paging is needed for it either.
+* Cost of one `get_models` round: one request per model, sequential,
+  ~0.7–1.0 s warm on the probe deployment (37–161 ms each); a single cold
+  `> 30 s` stall was observed once during the 2026-09-21 probe and did
+  not recur, so the lookups run under the existing retry policy and
+  timeout, cached per model under the same 60 s TTL.
+
+---
 ## [0.2.6] - 2026-09-21
 
 ### Fixed

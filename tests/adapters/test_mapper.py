@@ -56,7 +56,7 @@ class TestModelMapping:
         assert models[1].display_name == "配置与凭据"
 
     def test_ci_types_with_fields_by_name(self) -> None:
-        field = mapper.map_attribute({"name": "credenti_key_id", "value_type": "2"})
+        field = mapper.map_type_attribute({"name": "credenti_key_id", "value_type": "2"})
         assert field is not None
         fields_by_name = {"credential": (field,)}
         payload = {
@@ -73,54 +73,95 @@ class TestModelMapping:
         assert mapper.map_ci_types({}) == []
         assert mapper.map_ci_types({"ci_types": None}) == []
 
-    def test_attribute_mapping(self) -> None:
-        field = mapper.map_attribute(
+    def test_type_attribute_mapping(self) -> None:
+        field = mapper.map_type_attribute(
             {
                 "id": 1,
                 "name": "quick_re_title",
                 "alias": "快速查询与联查",
                 "value_type": "2",
                 "is_choice": False,
+                # required comes from the *binding* row, not the attribute.
+                "is_required": True,
             }
         )
         assert field is not None
         assert field.name == "quick_re_title"
         assert field.type == "string"
-        assert field.required is False
+        assert field.required is True
         assert field.description == "快速查询与联查"
         assert field.enum_values is None
 
-    def test_choice_attribute_becomes_enum(self) -> None:
-        field = mapper.map_attribute(
+    def test_required_defaults_to_false_without_the_binding_flag(self) -> None:
+        field = mapper.map_type_attribute({"name": "status", "value_type": "2"})
+        assert field is not None
+        assert field.required is False
+
+    def test_choice_value_pairs_become_enum(self) -> None:
+        # Upstream shape verified on intranet VeOps host (2026-09-21): the
+        # server resolves the enumeration into [value, {label}] pairs.
+        field = mapper.map_type_attribute(
             {
-                "id": 2,
-                "name": "status",
-                "alias": "状态",
+                "name": "credenti_environment",
+                "alias": "环境",
                 "value_type": "2",
                 "is_choice": True,
-                "choice": "启用,停用,已删除",
+                "choice_value": [["生产", {"label": "生产"}], ["UAT", {"label": "UAT"}]],
             }
         )
         assert field is not None
-        assert field.enum_values == ("启用", "停用", "已删除")
+        assert field.enum_values == ("生产", "UAT")
+
+    def test_choice_value_is_stringified_and_deduplicated(self) -> None:
+        field = mapper.map_type_attribute(
+            {
+                "name": "server_os",
+                "value_type": "2",
+                "choice_value": [
+                    ["Kylin", {}],
+                    ["Kylin", {"label": "麒麟"}],
+                    [7, {}],
+                    [None, {}],
+                    [{"not": "a value"}, {}],
+                ],
+            }
+        )
+        assert field is not None
+        assert field.enum_values == ("Kylin", "7")
+
+    def test_unresolved_choice_degrades_to_no_constraint(self) -> None:
+        # A webhook-backed choice that is currently unreachable answers
+        # []; that means "no constraint is known", NOT "nothing allowed".
+        for raw in (
+            {"name": "a"},
+            {"name": "a", "choice_value": []},
+            {"name": "a", "choice_value": None},
+        ):
+            field = mapper.map_type_attribute(raw)
+            assert field is not None
+            assert field.enum_values is None
 
     def test_value_type_codes(self) -> None:
         assert mapper._value_type_to_core("2") == "string"
         assert mapper._value_type_to_core("1") == "int"
         assert mapper._value_type_to_core("unknown") == "string"
 
-    def test_map_attributes(self) -> None:
+    def test_map_type_attributes_keeps_the_upstream_order(self) -> None:
         payload = {
+            "type_id": 7,
             "attributes": [
-                {"name": "a", "value_type": "2"},
-                {"name": "b", "value_type": "1"},
+                {"name": "a", "value_type": "2", "order": 0},
+                {"name": "b", "value_type": "1", "order": 1},
                 {"name": None},
                 "not-a-dict",
-            ]
+            ],
         }
-        fields = mapper.map_attributes(payload)
+        fields = mapper.map_type_attributes(payload)
         assert [f.name for f in fields] == ["a", "b"]
 
+    def test_map_type_attributes_empty_payload(self) -> None:
+        assert mapper.map_type_attributes({}) == []
+        assert mapper.map_type_attributes({"attributes": None}) == []
 
 class TestInstanceMapping:
     def test_flat_ci_split(self) -> None:
