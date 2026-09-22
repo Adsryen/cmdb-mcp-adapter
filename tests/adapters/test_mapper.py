@@ -233,6 +233,34 @@ class TestRelationMapping:
         assert rels[0].metadata["veops.ci_type"] == "server"
         assert rels[0].metadata["veops.server_credential_id"] == "ACC-0166"
 
+    def test_second_ci_rows_labels_are_positional(self) -> None:
+        # 0.2.8: the adapter hands back the unfiltered rows plus one label
+        # per row (``None`` = unresolved); the mapping must not reorder or
+        # merge them, and must refuse a misaligned label list.
+        rows = [{"_id": 1, "ci_type": "server"}, {"_id": 2, "ci_type": "server"}]
+        rels = mapper.map_second_ci_rows(
+            rows, source_instance_id="48", relation_types=["承载", None]
+        )
+        assert [(r.target_instance_id, r.relation_type) for r in rels] == [
+            ("1", "承载"),
+            ("2", ""),
+        ]
+        assert mapper.RELATION_TYPE_UNRESOLVED_KEY not in rels[0].metadata
+        assert rels[1].metadata[mapper.RELATION_TYPE_UNRESOLVED_KEY] is True
+        with pytest.raises(ValueError):
+            mapper.map_second_ci_rows(
+                rows, source_instance_id="48", relation_types=["承载"]
+            )
+
+    def test_relation_types_skip_soft_deleted(self) -> None:
+        # A deleted name is answered HTTP 400 by the second_cis filter, so
+        # the dictionary mapping must never surface it.
+        payload = [
+            {"id": 1, "name": "承载", "deleted": False},
+            {"id": 4, "name": "hosts", "deleted": True},
+        ]
+        assert mapper.map_relation_types(payload) == {1: "承载"}
+
     def test_first_cis(self) -> None:
         payload = {
             "numfound": 2,

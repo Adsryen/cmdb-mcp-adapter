@@ -77,7 +77,8 @@ All paths are relative to `VEOPS_BASE_URL` plus `API_PREFIX`
 | — (field lookup)   | `GET /ci_types/<type_id>/attributes`                | per-type **binding list**: the only source of `fields`, `required`, `enum_values` (see "Model fields" below) |
 | `get_instances`    | `GET /ci/type/<type_id>?page=`                    | `{"cis": [...], numfound, page, total, type_id}` — paginated upstream: fixed 50/page, `page_size` ignored, `numfound`/`total` are per-page counts; the adapter pages through all of them (see "Traps observed") |
 | `search_instances` | `GET /ci/search?q=&ci_type=&page=&page_size=`     | `{numfound, total, page, result: [...]}` |
-| `get_relations`    | `GET /ci_relations/<instance_id>/second_cis`      | `{numfound, total, page, second_cis: [...]}` (outbound edges; inbound is the symmetric `/first_cis`) |
+| `get_relations`    | `GET /ci_relations/<instance_id>/second_cis?count=all[&relation_type=<name>]` | `{numfound, total, page, second_cis: [...]}` — **outbound** edges only; `count=all` is mandatory to see them all and `relation_type` is the only way to learn an edge's type (see "Relations" below) |
+| — (edge typing)    | `GET /relation_types`                               | **bare JSON array**, no list wrapper: `[{id, name, deleted, ...}, ...]`; live types only — a soft-deleted name is *absent here and rejected* by the filter above with `400` |
 | `create_instance`  | `POST /ci`                                        | body `{"ci_type": <type_id>, ...fields, _key, _secret}` — creds in body; answers `{"ci_id": <int>}` (live-verified) |
 | `update_instance`  | `PUT /ci/<instance_id>`                           | body is the flat field dict + `_key`/`_secret` in body; answers `{"ci_id": <int>}` (live-verified) |
 | `delete_instance`  | `DELETE /ci/<instance_id>`                        | no body (creds in query); answers `{"message": "ok"}`; `405` maps to `unsupported_operation` (live-verified) |
@@ -107,6 +108,33 @@ All paths are relative to `VEOPS_BASE_URL` plus `API_PREFIX`
   therefore done **client-side** by the adapter (exact equality over
   the returned pages); `None` filter values match instances lacking
   that key.  The upstream search has no server-side attribute filter.
+* **The relation endpoints are paginated too — and their `numfound` means
+  something else.**  Verified on the intranet deployment
+  (2026-09-22): a bare `GET /ci_relations/<id>/second_cis` for a CI with
+  100 edges answered `len(second_cis)=50`, `total=50`, `numfound=100`.  On
+  the ci *list* endpoint `numfound` is the **page** count; on the relation
+  endpoints it is the **whole edge set**.  A bare call is therefore silently
+  truncated at the upstream's fixed 50-row page with no "more data" signal.
+  `count=all` (→ `get_page_size()`, `api/lib/utils.py:42`) suppresses
+  `offset`/`limit` (`api/lib/cmdb/ci.py:1141-1155`) and makes
+  `len(rows) == numfound` hold, so the adapter sends it and *checks* it.
+  Looping `page=2,3,...` is **not** an alternative: that query carries no
+  `ORDER BY` (and no `distinct`), so pages can repeat or drop rows; `page`
+  was also verified to be ignored once `count=all` is present.
+* `second_cis?relation_type=<name>` is the only way to obtain an edge's
+  type, and the name must come from `GET /relation_types`: an unknown or
+  soft-deleted name answers `400 Invalid relation type` (verified with
+  `hosts`, which exists in the table with `deleted=1`).  An **empty** value
+  is treated as "no filter", so a blank name must never be sent — it would
+  relabel the entire unfiltered set.
+* `GET /relation_types` answers a top-level array, not the usual
+  `{...: [...]}` wrapper, so it needs its own client call
+  (`VeopsClient.request_array`); every other endpoint keeps the
+  object-shape requirement.
+* **Inbound edges cannot be typed.**  `GET /ci_relations/<id>/first_cis`
+  honours `page`/`count` but *ignores* `relation_type` (verified 2026-09-22:
+  the same rows come back for every type name), so the per-type technique
+  above only works outbound.  `/first_cis` backs no MCP tool today.
 
 ### Model fields (from the type's binding list)
 
@@ -192,12 +220,61 @@ plus one key per attribute value.  The adapter splits them:
 
 ### Relations
 
-`GET /ci_relations/<id>/second_cis` returns flat *target* instance
-dicts without a `relation_type_id`, so `relation_type` is empty and the
-raw target payload is preserved in each relation's `metadata`
-(vendor-prefixed).  This is a documented limitation of the 2.6.2
-API; the generic `GET /ci_relations/s` endpoint 404s without full
-request context and is not used.
+`GET /ci_relations/<id>/second_cis` returns flat *target* instance dicts
+and — unlike the generic `GET /ci_relations/s` endpoint, which 404s without
+full request context and is not used — **no `relation_type_id`**.  Since
+0.2.8 `get_relations` returns the whole edge set *with* its types anyway, in
+two steps:
+
+1. **Completeness** — one `count=all` call, then refuse the answer unless
+   `len(second_cis) == numfound`.  A mismatch, or rows with no `numfound` to
+   check them against, raises `upstream_server` naming both counts (e.g.
+   `returned 50 of 120 outbound edges`); a truncated edge list is never
+   passed on as if it were complete.
+2. **Typing** — one call per *live* relation type name (dictionary cached
+   60 s), each typed row **consuming** one row of the unfiltered set keyed by
+   target id.  Iteration stops as soon as every edge is attributed: a
+   single-typed hub costs 2 requests (unfiltered + that type), a leaf CI
+   costs exactly 1 (no rows ⇒ the dictionary is not even read), worst case
+   `1 + len(live types)`.
+
+Measured on the intranet deployment (2026-09-22, 44 sampled CIs, 3,223
+edges, every out-degree band and every live relation type represented):
+**243 upstream calls, 13.0 MB, 4.6 s, zero errors** — 1 dictionary call + 44
+`count=all` calls + 198 typed probes.  The two extremes are instructive:
+
+* `data_check` **#2987** (292 edges, all `待核验`): 8 calls, 1,254,542 bytes.
+  The unfiltered set is 627,070 bytes and the `待核验` probe returns that same
+  payload again, because the typed query has no way to project fewer fields.
+  Six intermediate probes returned 67 bytes (the empty envelope).
+* A **1-edge CI whose type sorts last** in the dictionary (#1154, #2336,
+  #2874, #2925, #2929, #2963): 8 calls for 5,244 bytes ≈ 90 ms.  Request
+  count, not bytes, is what hurts at this end — and types that carry no edges
+  at all (`调用`, `监测`) still get probed while any edge is unattributed.
+
+Ordering the probes by observed hit rate would collapse both cases toward
+`1 + types actually present`; it changes no guarantee (attribution is keyed by
+target id and the loop only stops when nothing is pending), so it is a
+candidate for 0.2.9.
+
+Consistency is enforced in both directions: a typed row whose target is not
+in the unfiltered set raises `upstream_server` (the adapter refuses to guess
+which edge to label), and an unclaimed edge is returned with
+`relation_type=""` **plus**
+`metadata["adapter.relation_type_unresolved"] = true`.  That flag is
+namespaced `adapter.` rather than `veops.` on purpose: it is the adapter's
+own statement, not a copied vendor value.  The usual cause is an edge still
+pointing at a soft-deleted relation type — a real data problem inside the
+CMDB, which is exactly why it is surfaced instead of hidden.  If the
+dictionary endpoint is unusable (`403`/`404`/wrong shape) the adapter logs
+one warning, returns the (still proven complete) edges with every type
+unresolved, and does **not** cache the failure; transient failures follow
+the normal retry policy.
+
+Edges keep the upstream row order, and the raw target payload stays in each
+relation's `metadata` under the `veops.` prefix.  Sum rule verified on the
+probe deployment: the per-type row counts add up to `numfound` exactly
+(100 = 100 `承载` + 0 for each of the other 7 live types).
 
 ## Configuration
 
@@ -345,13 +422,21 @@ is used instead (no extra I/O).
 
 ## Deployment limitations (2.6.2)
 
-* **`get_instances` is not paginated upstream.**  `GET /ci/type/
-  <type_id>` returns the whole type in one response (up to a few
-  thousand rows on real deployments); the adapter returns it as a
-  single page (`next_cursor=None`) and rejects a non-empty cursor
-  argument with a `validation` error.  Use `search_instances` for
-  large datasets — it is page-paginated (`page`/`page_size`, with
-  `next_cursor` carrying the next 1-based page).
+* **`get_instances` answers in a single MCP page.**  `GET /ci/type/
+  <type_id>` *is* paginated upstream (fixed 50 rows, `page_size` ignored —
+  see "Traps observed"); the adapter walks those pages itself and returns
+  the whole type with `next_cursor=None`, and rejects a non-empty cursor
+  argument with a `validation` error.  `search_instances` is the tool that
+  pages for the caller (`page`/`page_size`, `next_cursor` carrying the next
+  1-based page).  *(This bullet used to claim the endpoint was "not
+  paginated upstream" — measured wrong on 2026-08-29 and fixed in 0.2.5, the
+  wording had never been brought in line with the trap above.)*
+* **`get_relations` is outbound-only and costs one request per relation
+  type.**  An instance with edges over `t` live relation types costs `1 + t`
+  upstream calls (bounded by `1 + 8` on the probe deployment; the dictionary
+  is cached for 60 s and zero-edge CIs cost a single call), and inbound
+  edges (`/first_cis`) cannot be typed at all on 2.6.2, so no tool exposes
+  them.
 * **No server-side attribute filtering.**  The search `fl` parameter
   selects returned fields only; `filters` are applied client-side
   (exact equality; `None` matches missing keys).

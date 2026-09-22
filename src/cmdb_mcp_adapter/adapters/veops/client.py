@@ -51,7 +51,7 @@ logs only; the MCP tool layer never emits ``upstream_detail``.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -131,7 +131,46 @@ class VeopsClient:
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Issue one signed request and return the parsed JSON body.
+        """Issue one signed request; the body must be a JSON *object*."""
+        return cast(
+            "dict[str, Any]",
+            self._request(method, path, params=params, json_body=json_body, expect=dict),
+        )
+
+    def request_array(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> list[Any]:
+        """Issue one signed ``GET`` whose body is a **bare JSON array**.
+
+        ``GET /relation_types`` answers a top-level array (verified
+        2026-09-22: 8 entries of ``{id, name, deleted, created_at,
+        updated_at, deleted_at}``) instead of the usual list wrapper.
+        The array contract is deliberately **opt-in**: :meth:`request`
+        keeps rejecting a non-object body, so no other endpoint can
+        quietly start returning an array without a loud error.
+        """
+        return cast(
+            "list[Any]",
+            self._request("GET", path, params=params, json_body=None, expect=list),
+        )
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None,
+        json_body: dict[str, Any] | None,
+        expect: type[dict[str, Any]] | type[list[Any]],
+    ) -> Any:
+        """Shared signed-request body (see :meth:`request`).
+
+        Returns the parsed JSON body, which must be of the ``expect``ed
+        top-level type: a non-matching shape is an upstream contract
+        violation and raises (it is never coerced or ignored).
 
         ``path`` is relative to :data:`API_PREFIX` (it should start with a
         ``/``).  ``params`` are the request's query parameters and
@@ -199,7 +238,7 @@ class VeopsClient:
         _log_response(method, url, response.status_code)
         if 200 <= response.status_code < 300:
             if response.status_code == 204 or not response.content:
-                return {}
+                return {} if expect is dict else []
             try:
                 data = response.json()
             except ValueError as exc:
@@ -207,9 +246,11 @@ class VeopsClient:
                     "veops returned a non-JSON success body",
                     upstream_detail=self._detail(response),
                 ) from exc
-            if not isinstance(data, dict):
+            if not isinstance(data, expect):
                 raise ValidationError(
-                    "veops returned an unexpected (non-object) JSON body",
+                    f"veops returned an unexpected JSON body: a "
+                    f"{expect.__name__} was required, got "
+                    f"{type(data).__name__}",
                     upstream_detail=self._detail(response),
                 )
             return data
@@ -217,7 +258,7 @@ class VeopsClient:
         self._raise_for_status(method, path, response)
         # _raise_for_status always raises; this return keeps mypy from
         # treating the tail of the function as reachable-with-None.
-        return {}  # pragma: no cover - unreachable
+        return {} if expect is dict else []  # pragma: no cover - unreachable
 
     def _detail(self, response: httpx.Response) -> str:
         """A bounded, redacted snippet of the upstream error body.

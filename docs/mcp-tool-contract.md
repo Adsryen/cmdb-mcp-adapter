@@ -140,7 +140,12 @@ Free-text search over a model's instances (cursor-paginated).
 
 ### `get_relations`
 
-List the relations originating from an instance.
+List **every** relation originating from an instance (outbound edges).
+
+The result is never partial: there is no `page`/`cursor` argument because
+the adapter returns the complete edge set.  If the upstream cannot prove
+completeness, the call **fails** with `upstream_server` instead of returning
+a short list — callers may rely on the count.
 
 **Input:**
 
@@ -161,6 +166,12 @@ List the relations originating from an instance.
   }
 ]
 ```
+
+`relation_type` is the upstream type name (`承载`, `runs_on`, …).  An empty
+string means the adapter could not attribute that one edge; such a row also
+carries `"metadata": {"adapter.relation_type_unresolved": true, ...}` so the
+gap cannot be mistaken for "this edge has no type".  See
+[veops-adapter.md — Relations](veops-adapter.md) for when that happens.
 
 ## Pagination semantics
 

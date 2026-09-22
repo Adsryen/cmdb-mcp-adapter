@@ -32,11 +32,18 @@ Contract notes (verified 2026-08, see ``docs/veops-adapter.md``):
   parameter controls *returned fields*, not filtering, so the core
   ``filters`` argument is applied **client-side** (exact equality) on
   the returned pages.
-* **``get_relations``** returns the *outbound* edge targets of an
-  instance (``GET /ci_relations/<id>/second_cis``).  The response does
-  not carry a relation type id, so ``relation_type`` is empty
-  (documented limitation); the raw target payload is preserved in each
-  relation's ``metadata``.
+* **``get_relations``** returns **all** *outbound* edge targets of an
+  instance (``GET /ci_relations/<id>/second_cis``), with their relation
+  type.  That endpoint is paginated at a fixed 50 rows (``numfound`` is
+  the total over the edge set, unlike the ci list endpoint), so the
+  adapter sends ``count=all`` and refuses the result when the row count
+  does not match ``numfound`` instead of passing on a truncated list
+  (defect P-13).  The response carries no ``relation_type_id``, so the
+  type is recovered by re-querying once per *live* relation type name
+  from ``GET /relation_types`` (cached, 60 s TTL), consuming rows out of
+  the unfiltered set; anything left over is flagged in ``metadata``
+  rather than silently left empty (defect P-12).  The raw target payload
+  is preserved in each relation's ``metadata``.
 * **Write calls** sign their scalar JSON-body values the same way GETs
   sign their query parameters.
 * **``list_models``** maps ``GET /ci_types`` (a list-wrapped response).
@@ -54,6 +61,7 @@ Contract notes (verified 2026-08, see ``docs/veops-adapter.md``):
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from typing import Any, cast
@@ -62,8 +70,11 @@ from cmdb_mcp_adapter.adapters.veops import mapper
 from cmdb_mcp_adapter.adapters.veops.client import VeopsClient
 from cmdb_mcp_adapter.core.adapter import Filters
 from cmdb_mcp_adapter.core.errors import (
+    AuthorizationError,
     CoreError,
+    NotFoundError,
     UnsupportedOperationError,
+    UpstreamServerError,
     ValidationError,
 )
 from cmdb_mcp_adapter.core.models import (
@@ -107,6 +118,30 @@ _CACHE_TTL_SECONDS = 60.0
 #: larger page still terminates correctly on the empty page.
 _INSTANCE_PAGE_SIZE = 50
 
+#: Fetch-everything parameter for the *relation* endpoints.  ``count``
+#: feeds ``get_page_size()``, which returns the string ``"all"``
+#: untouched, and ``get_second_cis()`` then skips ``offset``/``limit``
+#: altogether (verified in ``api/lib/cmdb/ci.py:1141-1155`` +
+#: ``api/lib/utils.py:42-50`` on the 2.6.2 deployment).
+_RELATION_COUNT_ALL = "all"
+
+_logger = logging.getLogger("cmdb_mcp_adapter.adapters.veops")
+
+
+def _as_int(value: Any) -> int | None:
+    """Coerce an upstream count (``int`` or digit string) to ``int``.
+
+    ``None`` for anything else — the caller decides whether a missing
+    count is fatal (it is for a completeness check).
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
 
 class VeopsAdapter:
     """A :class:`~cmdb_mcp_adapter.core.adapter.CMDBAdapter` backed by
@@ -131,6 +166,10 @@ class VeopsAdapter:
         # model name -> (resolved ModelFields, fetched_at); one entry per
         # ci_type, filled by :meth:`_fields_for_type` (60 s TTL).
         self._model_fields: dict[str, tuple[tuple[ModelField, ...], float]] = {}
+        # live relation type names, filled by :meth:`_relation_type_names`
+        # (same 60 s TTL); ``None`` = never fetched.
+        self._relation_names: tuple[str, ...] | None = None
+        self._relation_names_fetched_at: float | None = None
 
     # -- internals ---------------------------------------------------------
     def _read(self, fn: Callable[[], Any], *, operation: str) -> Any:
@@ -269,6 +308,60 @@ class VeopsAdapter:
         dictionary.
         """
         return tuple(f.name for f in self._best_effort_fields(model_name))
+
+    def _relation_type_names(self) -> tuple[str, ...]:
+        """The deployment's *live* relation type names (cached, 60 s TTL).
+
+        Labeling an edge requires this list: the ``second_cis`` endpoint
+        exposes the relation type only as a **query filter addressed by
+        name**, and it answers ``400 Invalid relation type`` for anything
+        outside the current dictionary — including a soft-deleted name
+        (both verified on the intranet deployment, 2026-09-22).  A
+        hard-coded table would therefore break the day an operator adds
+        or renames a type, so the names are read from
+        ``GET /relation_types`` when the cache expires.
+
+        Blank names are dropped: upstream treats an empty ``relation_type``
+        parameter as *no filter at all*, which would re-fetch the whole
+        edge set and label every edge with nothing.
+
+        Returns an empty tuple when the dictionary endpoint is *not
+        usable as specified* — denied (``403``), absent (``404``) or a
+        shape the contract does not allow (``ValidationError``, e.g. the
+        usual list wrapper instead of the bare array): the edges come
+        from another endpoint and are already proven complete by the
+        ``numfound`` self-check, so they are still worth returning, each
+        flagged unresolved.  Degradation is visible, never silent, and is
+        logged once per attempt (the result is deliberately *not*
+        cached).  Transient failures (timeout / 5xx) propagate into the
+        retry policy instead.
+        """
+        now = self._now()
+        if (
+            self._relation_names is not None
+            and self._relation_names_fetched_at is not None
+            and now - self._relation_names_fetched_at < _CACHE_TTL_SECONDS
+        ):
+            return self._relation_names
+        try:
+            payload = self._client.request_array(_PATH_RELATION_TYPES)
+        except (AuthorizationError, NotFoundError, ValidationError) as exc:
+            # Not cached on purpose: the next call tries again.
+            _logger.warning(
+                "veops.relation_types.unavailable",
+                extra={
+                    "event": "veops.relation_types.unavailable",
+                    "category": exc.category.value,
+                },
+            )
+            return ()
+        by_id = mapper.map_relation_types(payload)
+        names = tuple(
+            stripped for stripped in (by_id[i].strip() for i in sorted(by_id)) if stripped
+        )
+        self._relation_names = names
+        self._relation_names_fetched_at = self._now()
+        return names
 
     # -- the seven protocol operations ------------------------------------
     def list_models(self) -> list[CMDBModel]:
@@ -457,18 +550,91 @@ class VeopsAdapter:
         model_name: str,
         instance_id: str,
     ) -> list[CMDBRelation]:
+        """List the **outbound** edges of an instance — complete and typed.
+
+        Two verified upstream behaviours shape this call (intranet VeOps host,
+        2026-09-22; see ``docs/veops-adapter.md``):
+
+        * ``GET /ci_relations/<id>/second_cis`` serves a fixed page of 50
+          rows and ignores ``page_size``, while ``numfound`` is the total
+          over the *whole* edge set (the opposite of the ci list
+          endpoint, where it is per-page).  A bare call therefore returned
+          50 of 100 edges **without any signal** — defect **P-13**, which
+          hid 2,207 of 5,026 edges (43.9%) deployment-wide.  So the
+          adapter sends ``count=all`` and *checks* the row count against
+          ``numfound`` instead of trusting it; a mismatch raises.  Page
+          looping is **not** a fallback: the query has no ``ORDER BY``, so
+          pages can repeat or drop rows.
+        * the payload carries no ``relation_type_id``, so the type is
+          recovered by re-querying the same endpoint once per live
+          relation type (defect **P-12**).  Each typed row *consumes* one
+          row of the unfiltered set (keyed by target id), which makes the
+          per-type counts provably add up to the whole set: a typed row
+          that the unfiltered set does not contain is a contract
+          violation (raise), and an unfiltered row no type claimed is
+          returned flagged ``adapter.relation_type_unresolved`` — the
+          usual cause being an edge that still points at a
+          **soft-deleted** relation type.
+
+        Cost: 1 dictionary call per 60 s + 1 unfiltered call + one call
+        per relation type *until every edge is attributed* (1 for a
+        single-typed hub, 8 at worst).  Rows keep the upstream order.
+        """
         _ = model_name  # relations are addressed by numeric ci id only
+        path = _PATH_RELATION_SECOND.format(instance_id=instance_id)
+
+        def _rows(params: dict[str, Any], *, what: str) -> list[dict[str, Any]]:
+            """One ``count=all`` read, verified against ``numfound``."""
+            payload = self._client.request("GET", path, params=params)
+            rows = [r for r in (payload.get("second_cis") or []) if isinstance(r, dict)]
+            numfound = _as_int(payload.get("numfound"))
+            if numfound is None:
+                if rows:
+                    raise UpstreamServerError(
+                        f"veops returned {len(rows)} {what} for instance "
+                        f"{instance_id} without a numfound to verify them "
+                        "against; refusing to pass on an unverified edge set"
+                    )
+            elif numfound != len(rows):
+                raise UpstreamServerError(
+                    f"veops returned {len(rows)} of {numfound} {what} for "
+                    f"instance {instance_id} although count=all was sent; "
+                    "refusing to pass on a truncated relation list (the "
+                    "deployment's default page is 50 rows)"
+                )
+            return rows
 
         def _one() -> list[CMDBRelation]:
-            payload = self._client.request(
-                "GET", _PATH_RELATION_SECOND.format(instance_id=instance_id)
-            )
-            # The response carries no relation_type_id (verified
-            # 2026-08), so the type stays empty (documented limitation).
-            return mapper.map_second_cis(
-                payload,
-                source_instance_id=instance_id,
-                relation_type="",
+            rows = _rows({"count": _RELATION_COUNT_ALL}, what="outbound edges")
+            # target id -> indexes of ``rows`` still waiting for a type
+            pending: dict[str, list[int]] = {}
+            for index, row in enumerate(rows):
+                pending.setdefault(str(row.get("_id", "")), []).append(index)
+            labels: list[str | None] = [None] * len(rows)
+            # With no rows there is nothing to type: skip the dictionary
+            # read altogether (the common case for a leaf CI).
+            if pending:
+                for name in self._relation_type_names():
+                    if not pending:
+                        break  # every edge attributed: stop querying
+                    for row in _rows(
+                        {"count": _RELATION_COUNT_ALL, "relation_type": name},
+                        what=f"edges of relation type {name}",
+                    ):
+                        key = str(row.get("_id", ""))
+                        waiting = pending.get(key)
+                        if not waiting:
+                            raise UpstreamServerError(
+                                f"veops relation type {name!r} returned target "
+                                f"{key} for instance {instance_id}, which is "
+                                "not in the unfiltered edge set; refusing to "
+                                "guess which edge to label"
+                            )
+                        labels[waiting.pop(0)] = name
+                        if not waiting:
+                            del pending[key]
+            return mapper.map_second_ci_rows(
+                rows, source_instance_id=instance_id, relation_types=labels
             )
 
         result = self._read(_one, operation="get_relations")

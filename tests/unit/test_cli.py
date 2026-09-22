@@ -23,6 +23,14 @@ def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+#: Budget for launching the *real* server in a subprocess.  Importing
+#: ``mcp`` + FastAPI is under a second on a local checkout but was measured
+#: at ~6 s cold from a 9p/network-mounted one, which made a 5 s budget fail
+#: the suite without any product change (same budget as ``_run_cli``; the
+#: docs smoke test has used 30 s all along).
+_LAUNCH_TIMEOUT = 30
+
+
 class TestDiagnostics:
     def test_version(self) -> None:
         result = _run_cli(["--version"])
@@ -65,7 +73,7 @@ class TestStdioLauncher:
             input="",
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=_LAUNCH_TIMEOUT,
             check=False,
             env={**_clean_env(), "MCP_ADAPTER": "mock"},
         )
@@ -85,7 +93,7 @@ class TestStdioLauncher:
             input="",
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=_LAUNCH_TIMEOUT,
             check=False,
             env={**_clean_env(), "MCP_ADAPTER": "definitely-not-registered"},
         )

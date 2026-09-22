@@ -5,6 +5,94 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [0.2.8] - 2026-09-22
+
+### Fixed
+
+* **`get_relations` silently returned only the first 50 outbound edges**
+  (defect **P-13**).  `GET /ci_relations/<id>/second_cis` is paginated with
+  the upstream's fixed 50-row page and carries no "more data" signal, while
+  its `numfound` is the size of the **whole** edge set — the opposite of the
+  ci list endpoint, where `numfound` is per-page.  A CI with 100 edges
+  answered 50 rows and `total=50`, which looked complete.  Deployment-wide
+  this hid 2,207 of 5,026 edges (43.9%), i.e. any agent reading the
+  relation graph was reasoning over a truncated picture.  The adapter now
+  sends `count=all` (the only strategy that is safe here: the upstream query
+  has no `ORDER BY` and no `distinct`, so page looping can repeat or drop
+  rows) and **verifies** `len(second_cis) == numfound`.  A mismatch, or rows
+  with no `numfound` to check against, raises `upstream_server` naming both
+  counts; truncation is now impossible to pass off as a complete answer.
+* **`relation_type` was always empty** (defect **P-12**).  The endpoint does
+  not return a `relation_type_id`, but it does accept a `relation_type`
+  **name** filter, so the adapter now recovers the type by re-querying once
+  per live relation type, each typed row consuming one row of the
+  unfiltered set (keyed by target id).  Sum rule verified live: per-type
+  counts add up to `numfound` exactly.  Cost is bounded and usually small —
+  a CI with no edges costs **1** request (the dictionary is not read at all),
+  a single-typed hub costs **2**, the worst case is `1 + number of live
+  types` (8 on the probe deployment).  The dictionary is cached under the
+  existing 60 s TTL.
+* **Unresolvable edges are labelled, not swallowed.**  An edge no relation
+  type claimed keeps `relation_type=""` (the core contract forbids inventing
+  a vendor-neutral name) and gains
+  `metadata["adapter.relation_type_unresolved"] = true`.  The typical cause
+  is an edge still pointing at a **soft-deleted** relation type, which is a
+  real data defect inside the CMDB and precisely why it is surfaced.  A typed
+  row whose target is absent from the unfiltered set raises
+  `upstream_server` instead of guessing which edge to label.
+
+### Added
+
+* `VeopsClient.request_array()` for the one endpoint that answers a **bare
+  JSON array** — `GET /relation_types` (verified 2026-09-22: 8 live entries
+  out of 11 table rows, each `{id, name, deleted, created_at, updated_at,
+  deleted_at}`).  The array contract is opt-in: `request()` still rejects a
+  non-object body, so no other endpoint can quietly start returning an array
+  without a loud error.
+* `mapper.map_second_ci_rows()` — map pre-extracted target rows with a
+  per-row type label supplied by the adapter (parallel sequences, length
+  mismatch is a `ValueError`), and the
+  `mapper.RELATION_TYPE_UNRESOLVED_KEY` constant.  `map_second_cis()` is
+  unchanged for callers that already know a single type.
+* `VeopsAdapter._relation_type_names()` — the live relation-type dictionary,
+  read from upstream rather than hard-coded (a frozen table would break the
+  day an operator adds or renames a type).  Soft-deleted entries are
+  dropped, blank names are dropped (upstream reads an empty `relation_type`
+  filter as "no filter at all", which would relabel the whole edge set), and
+  an unusable dictionary endpoint degrades to *no types* with one warning
+  and no caching of the failure.
+
+### Documentation
+
+* `docs/veops-adapter.md`: the new relation traps, the rewritten
+  "Relations" section, `GET /relation_types` in the endpoint table, the
+  outbound-only cost limitation, and a correction to the "Deployment
+  limitations" bullet that still claimed `get_instances` was "not paginated
+  upstream" (measured wrong in 0.2.5; the wording had never been fixed).
+* `docs/mcp-tool-contract.md`: `get_relations` now states that the edge set
+  is complete-or-error and how an unresolved `relation_type` is marked.
+
+### Known limitations (not addressed here)
+
+* Inbound edges are still not exposed: `GET /ci_relations/<id>/first_cis`
+  honours `page`/`count` but **ignores** `relation_type` (verified
+  2026-09-22), so the per-type technique cannot be reused there.  Typing
+  inbound edges is a candidate for 0.2.9.
+* A CI whose edges are spread over many relation types pays one request per
+  type, and each request re-downloads the full target payload.  Measured
+  pre-flight on intranet VeOps host (2026-09-22, 44 sampled CIs covering every
+  out-degree band and every live relation type): **243 upstream calls /
+  13.0 MB / 4.6 s / zero errors**.  Worst single instance `data_check`
+  #2987 (292 edges): 8 calls, 1,254,542 bytes, 175 ms — the `count=all`
+  set is 627,070 bytes and the `待核验` probe repeats that exact payload
+  because every edge carries that one type.  Worst *amplification* is the
+  mirror image: a 1-edge CI whose type sits last in dictionary order
+  (#1154, #2336, #2874, #2925, #2929, #2963) pays 8 calls for 5,244 bytes
+  (~90 ms), six of them empty.  Types with no edges at all (`调用`,
+  `监测`) are probed whenever any edge is still unattributed.  Both costs
+  are latency-bound rather than volume-bound; ordering the probes by
+  observed hit rate is a candidate for 0.2.9 (see P-16).
+
 ## [0.2.7] - 2026-09-21
 
 ### Fixed

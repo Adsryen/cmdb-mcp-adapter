@@ -384,6 +384,9 @@ class TestRelations:
                 }
             ],
         }
+        # No /relation_types stub: the transport falls through to ``{}``,
+        # which is not the bare array the endpoint must answer — the
+        # adapter therefore cannot resolve any type and must say so.
         transport = _RecordingTransport(
             {("GET", f"{API}/ci_relations/731/second_cis"): payload}, {}
         )
@@ -392,10 +395,17 @@ class TestRelations:
         assert len(rels) == 1
         assert rels[0].source_instance_id == "731"
         assert rels[0].target_instance_id == "1"
-        # The upstream response carries no relation_type_id (verified):
-        # the type stays empty rather than being invented.
+        # The upstream response carries no relation_type_id (verified);
+        # with the type dictionary unavailable the field stays empty
+        # rather than being invented — and is flagged, never silent.
         assert rels[0].relation_type == ""
+        assert rels[0].metadata["adapter.relation_type_unresolved"] is True
         assert rels[0].metadata["veops.ci_type"] == "server"
+        # the completeness self-check must have asked for everything
+        (request,) = [
+            r for r in transport.requests if r.url.path.endswith("/second_cis")
+        ]
+        assert request.url.params["count"] == "all"
 
     def test_relations_empty(self) -> None:
         transport = _RecordingTransport(

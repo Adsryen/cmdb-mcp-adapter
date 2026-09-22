@@ -21,7 +21,13 @@ deployment (2026-08; see ``docs/veops-adapter.md``):
   with flat instance dicts.
 * ``GET /ci_relations/<id>/second_cis`` (and ``/first_cis``) return
   ``{numfound, total, page, second_cis: [...]}`` — flat instance dicts,
-  **without** a ``relation_type_id``.
+  **without** a ``relation_type_id``.  ``numfound`` is the *total over
+  the whole edge set* (unlike the ci list endpoint) and ``total`` is the
+  number of rows actually returned, so ``count=all`` makes
+  ``len(rows) == numfound`` a sound completeness check.  The relation
+  type is therefore supplied by the adapter (per-type re-query, see
+  :func:`map_second_cis`) and an edge whose type could not be resolved
+  is labelled explicitly instead of silently left empty.
 * ``GET /ci_types/<type_id>/attributes`` returns
   ``{"attributes": [ ... ], "type_id": n, "unique_id": n, "unique": n}``
   — the type's **attribute binding list**, i.e. the authoritative
@@ -47,6 +53,7 @@ satisfying the core rule that normalized fields are never displaced.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from cmdb_mcp_adapter.core.models import (
@@ -55,6 +62,13 @@ from cmdb_mcp_adapter.core.models import (
     CMDBRelation,
     ModelField,
 )
+
+#: Key (in ``CMDBRelation.metadata``) that marks an edge whose relation
+#: type the adapter could **not** resolve.  Namespaced apart from
+#: :data:`VENDOR_METADATA_PREFIX` on purpose: the flag is the adapter's
+#: own statement, not a vendor value copied out of the payload.  Absent
+#: when the type *was* resolved.
+RELATION_TYPE_UNRESOLVED_KEY = "adapter.relation_type_unresolved"
 
 #: Prefix for vendor-specific values carried in ``metadata``.  The core
 #: contract requires vendor extensions to be explicitly namespaced so they
@@ -333,24 +347,57 @@ def map_second_cis(
     — the source id and the relation type are **not** included in it
     (verified: no ``relation_type_id`` field).  ``relation_type`` is
     supplied by the adapter from the ``/relation_types`` dictionary when
-    it can resolve one, otherwise it stays empty and the limitation is
-    documented.  The raw target payload is preserved in each relation's
-    ``metadata`` (vendor-prefixed) so nothing is lost.
+    it can resolve one; an edge it cannot resolve is mapped with
+    ``relation_type=""`` **and** flagged
+    (``metadata["adapter.relation_type_unresolved"]``) so the gap is
+    visible instead of silent.  The raw target payload is preserved in
+    each relation's ``metadata`` (vendor-prefixed) so nothing is lost.
     """
-    items = payload.get("second_cis") or []
+    rows = [i for i in (payload.get("second_cis") or []) if isinstance(i, dict)]
+    return map_second_ci_rows(
+        rows,
+        source_instance_id=source_instance_id,
+        relation_types=[relation_type] * len(rows),
+    )
+
+
+def map_second_ci_rows(
+    rows: list[dict[str, Any]],
+    *,
+    source_instance_id: str,
+    relation_types: Sequence[str | None],
+) -> list[CMDBRelation]:
+    """Map already-extracted target rows, one relation per row.
+
+    ``relation_types`` is **parallel to** ``rows`` (same order, same
+    length): the resolved type name, or ``None`` for an edge whose type
+    could not be resolved.  An unresolved edge keeps the empty normalized
+    field (the core contract forbids inventing a vendor-neutral name) and
+    is flagged in ``metadata`` instead.  Kept pure — the *selection* of
+    which row carries which type is the adapter's job (see
+    ``VeopsAdapter.get_relations``).
+
+    Raises:
+        ValueError: when the two sequences are not the same length (a
+            label could then not be trusted to belong to its edge).
+    """
+    if len(rows) != len(relation_types):
+        raise ValueError(
+            f"{len(rows)} edge rows but {len(relation_types)} relation-type labels"
+        )
     relations: list[CMDBRelation] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
+    for item, relation_type in zip(rows, relation_types, strict=True):
         metadata: dict[str, Any] = {}
         for key, value in item.items():
             if key != "_id":
                 metadata[f"{VENDOR_METADATA_PREFIX}{key}"] = value
+        if relation_type is None:
+            metadata[RELATION_TYPE_UNRESOLVED_KEY] = True
         relations.append(
             CMDBRelation(
                 source_instance_id=source_instance_id,
                 target_instance_id=str(item.get("_id", "")),
-                relation_type=relation_type,
+                relation_type=relation_type or "",
                 metadata=metadata or None,
             )
         )
@@ -387,12 +434,19 @@ def map_first_cis(
 
 def map_relation_types(payload: Any) -> dict[int, str]:
     """Map the ``GET /relation_types`` **bare array** into an
-    ``id -> name`` dictionary for resolving relation type names."""
+    ``id -> name`` dictionary for resolving relation type names.
+
+    Soft-deleted entries are dropped: upstream ``get_all()`` already
+    filters them (verified 2026-09-22 — 11 rows exist in the table, 8
+    live names are returned, the deleted ``hosts``/``4``/``5``/``6`` are
+    absent), and a deleted name would be *rejected* by the ``second_cis``
+    ``relation_type`` filter with HTTP 400, so it must never be queried.
+    """
     if not isinstance(payload, list):
         return {}
     out: dict[int, str] = {}
     for raw in payload:
-        if not isinstance(raw, dict):
+        if not isinstance(raw, dict) or raw.get("deleted"):
             continue
         attr_id = raw.get("id")
         if not isinstance(attr_id, int) and attr_id is not None:
@@ -442,6 +496,7 @@ def decode_search_cursor(cursor: str | None) -> int:
 
 
 __all__ = [
+    "RELATION_TYPE_UNRESOLVED_KEY",
     "VENDOR_METADATA_PREFIX",
     "decode_search_cursor",
     "encode_search_cursor",
@@ -453,6 +508,7 @@ __all__ = [
     "map_cis",
     "map_first_cis",
     "map_relation_types",
+    "map_second_ci_rows",
     "map_second_cis",
     "map_search_result",
 ]
