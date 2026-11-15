@@ -204,12 +204,20 @@ class VeopsClient:
         #   * JSON body (writes):credentials inside the body, signed over the
         #                        body's scalar values.
         if json_body is not None:
-            sign_params = {k: v for k, v in json_body.items() if v is not None}
-            sent_body = {k: v for k, v in json_body.items() if v is not None}
-            sent_body[signing.KEY_PARAM] = self._config.key
-            sent_body[signing.SECRET_PARAM] = signing.sign(
-                url, self._config.secret, sign_params
+            # The body goes on the wire *verbatim* (P-35).  A JSON ``null``
+            # really is transmitted, and because upstream's auth_required
+            # rewrites request.values to the parsed body, auth.py counts it in
+            # the signature as str(None) == "None" (it excludes only
+            # _key/_secret and containers).  Body values and body signature
+            # must therefore be derived from the SAME dict -- stripping nulls
+            # from both used to keep auth working while silently dropping a
+            # caller's "clear this field" intent: 200 OK, nothing changed.
+            signature = signing.sign(
+                url, self._config.secret, json_body, keep_none=True
             )
+            sent_body = dict(json_body)
+            sent_body[signing.KEY_PARAM] = self._config.key
+            sent_body[signing.SECRET_PARAM] = signature
             params_to_send: dict[str, Any] | None = None
             body_to_send = sent_body
         else:

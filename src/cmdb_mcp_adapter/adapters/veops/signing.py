@@ -43,13 +43,35 @@ KEY_PARAM = "_key"
 SECRET_PARAM = "_secret"
 
 
-def _scalar_params(params: Mapping[str, Any]) -> dict[str, Any]:
+def _scalar_params(
+    params: Mapping[str, Any], *, keep_none: bool = False
+) -> dict[str, Any]:
     """Keep only scalar (non-container) parameter values, minus the
-    signing parameters themselves.  ``None`` values are dropped (they are
-    not sent on the wire and therefore not signed)."""
+    signing parameters themselves.
+
+    Whether ``None`` may be dropped depends on **where the parameters go on
+    the wire**, so it is an explicit switch rather than one global rule:
+
+    * ``keep_none=False`` (default, **query string**) — httpx drops ``None``
+      query values, the server never sees them, so they must not be signed.
+    * ``keep_none=True`` (**JSON body**) — ``null`` *is* transmitted, and the
+      upstream's ``auth_required`` rewrites ``request.values`` to the parsed
+      body, after which ``lib/perm/auth.py`` folds ``str(None) == "None"``
+      into its signature string (it excludes only ``_key``/``_secret`` and
+      dict/list values).  A body-side ``None`` must therefore be sent *and*
+      signed together; the two must never disagree.
+
+    The previous unconditional drop was self-consistent only because the
+    client also stripped ``None`` out of the outgoing body — which quietly
+    threw away a caller's deliberate "clear this field" (register **P-35**;
+    the T-A/T-B/T-C signing contrast in cmdb-audit ``out/36`` proves both
+    directions).
+    """
     out: dict[str, Any] = {}
     for name, value in params.items():
-        if name in (KEY_PARAM, SECRET_PARAM) or value is None:
+        if name in (KEY_PARAM, SECRET_PARAM):
+            continue
+        if value is None and not keep_none:
             continue
         if isinstance(value, (dict, list, tuple, set)):
             continue
@@ -57,7 +79,13 @@ def _scalar_params(params: Mapping[str, Any]) -> dict[str, Any]:
     return out
 
 
-def sign(path: str, secret: str, params: Mapping[str, Any]) -> str:
+def sign(
+    path: str,
+    secret: str,
+    params: Mapping[str, Any],
+    *,
+    keep_none: bool = False,
+) -> str:
     """Compute the ``_secret`` query value for one request.
 
     Args:
@@ -70,12 +98,18 @@ def sign(path: str, secret: str, params: Mapping[str, Any]) -> str:
             ``_key``/``_secret``.  Only scalar values are used;
             mapping/sequence values are skipped (the upstream's
             ``request.values`` projection excludes containers).
+        keep_none: Pass ``True`` when ``params`` is a JSON **body** (a
+            ``null`` is transmitted and counted by the upstream as the
+            string ``"None"``); leave ``False`` for **query** parameters,
+            which httpx omits when ``None``.  Getting this wrong in the
+            ``True`` direction yields a 401; getting it wrong the other way
+            yields a silent no-op.  See :func:`_scalar_params`.
 
     Returns:
         The lowercase hex SHA-1 digest, i.e.
         ``sha1(path + secret + "".join(str(v) for k, v in sorted(items)))``.
     """
-    items = _scalar_params(params)
+    items = _scalar_params(params, keep_none=keep_none)
     parts = "".join(str(v) for _k, v in sorted(items.items()))
     return hashlib.sha1(f"{path}{secret}{parts}".encode()).hexdigest()
 

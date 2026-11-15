@@ -92,3 +92,47 @@ class TestSignedParams:
     def test_none_values_dropped(self) -> None:
         out = signing.signed_params("/api/v0.1/ci/search", "K", SECRET, {"q": None})
         assert "q" not in out
+
+
+class TestKeepNoneSwitch:
+    """P-35: the ``keep_none`` keyword selects *where* the params go.
+
+    Default ``False`` = query-string semantics (httpx drops ``None``
+    values, so they must not be signed) — behaviour identical to every
+    vector above.  ``True`` = JSON-body semantics (a ``null`` is
+    transmitted and the upstream folds ``str(None) == "None"`` into its
+    digest), so the ``None`` must be counted.  Vectors computed offline
+    against the deployed 0.2.9 implementation.
+    """
+
+    def test_keep_none_counts_none_as_the_string_none(self) -> None:
+        with_none = signing.sign(
+            "/api/v0.1/ci", SECRET, {"a": 1, "b": None}, keep_none=True
+        )
+        assert with_none == "e5e4eb0e7fc9deeacc750c4e434234edf1286295"
+        # Exactly what upstream signs: the literal string "None".
+        assert with_none == signing.sign(
+            "/api/v0.1/ci", SECRET, {"a": 1, "b": "None"}
+        )
+
+    def test_default_still_drops_none(self) -> None:
+        dropped = signing.sign("/api/v0.1/ci", SECRET, {"a": 1, "b": None})
+        assert dropped == "caaac94cc5a95e2db50d6e19adda41e782e82210"
+        assert dropped == signing.sign("/api/v0.1/ci", SECRET, {"a": 1})
+
+    def test_keep_none_changes_the_digest(self) -> None:
+        # The switch must not be cosmetic: same params, different digests.
+        assert signing.sign(
+            "/api/v0.1/ci", SECRET, {"note": None}, keep_none=True
+        ) == "925b5cba55491e33f9a2ec3ddbf5ecd8db4bde7b"
+        assert signing.sign("/api/v0.1/ci", SECRET, {"note": None}) == signing.sign(
+            "/api/v0.1/ci", SECRET, {}
+        )
+
+    def test_keep_none_still_excludes_creds_and_containers(self) -> None:
+        # keep_none only affects None handling; _key/_secret and
+        # container values remain excluded either way.
+        body = {"_key": "K", "_secret": "x", "tags": ["a"], "note": None, "ci_type": 7}
+        assert signing.sign(
+            "/api/v0.1/ci", SECRET, body, keep_none=True
+        ) == signing.sign("/api/v0.1/ci", SECRET, {"note": None, "ci_type": 7}, keep_none=True)

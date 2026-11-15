@@ -5,6 +5,21 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [0.2.9] - 2026-11-15（回仓补记：线上镜像实际构建于 2026-09-22）
+
+### Fixed
+
+* **JSON body 写请求的 `null` 语义（缺陷 P-35）**：0.2.8 及之前，客户端把
+  body 里的 `null` 同时从**上送内容与签名**里剥掉，上游因此根本收不到该
+  键 —— 调用方显式传 `null` 表达「清空此字段」的意图被静默吞掉（返回
+  200 OK 但什么都没改）。现在 body **原样上送**，签名以
+  `sign(url, secret, json_body, keep_none=True)` 与之一致：上游
+  `auth_required` 会把 `request.values` 重写为解析后的 body，
+  `lib/perm/auth.py` 将 `str(None) == "None"` 计入签名串（只排除
+  `_key`/`_secret` 与容器值），所以 body 值与签名必须同源同集合。
+  查询串路径保持默认 `keep_none=False`（httpx 会丢弃 `None` 参数，
+  行为不变）。证据：cmdb-audit `out/36` T-A/T-B/T-C 签名对撞。
+
 ## [0.2.8] - 2026-09-22
 
 ### Fixed

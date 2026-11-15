@@ -5,6 +5,8 @@ never leaks into client-facing error messages."""
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -215,3 +217,62 @@ class TestProbe:
         query = dict(req.url.params)
         assert "_key" not in query
         assert "_secret" not in query
+
+
+class TestBodyNullSemanticsP35:
+    """P-35 regression: a caller's explicit JSON ``null`` in a write body
+    must be transmitted verbatim and must be counted in the body
+    signature (``keep_none=True``).  The 0.2.8 client stripped nulls from
+    *both*, which kept auth self-consistent while silently dropping the
+    "clear this field" intent (200 OK, nothing changed).
+
+    These tests assert on the recorded wire bytes rather than through
+    ``_RecordingTransport``'s signature verification: the shared fake's
+    body branch still emulates the old strip-nulls value set, so a
+    null-carrying body signed the new (upstream-correct) way would fail
+    it.  Verification is disabled and the digest is checked directly
+    against :func:`signing.sign` with ``keep_none=True``.
+    """
+
+    def test_explicit_null_is_transmitted_not_stripped(self) -> None:
+        transport = _RecordingTransport({}, {}, require_signature=False)
+        client = build_client(transport)
+        client.request(
+            "PATCH", "/ci/1", json_body={"ci_type": 7, "note": None}
+        )
+        (req,) = transport.requests
+        body = json.loads(req.content)
+        # The null key survives on the wire — that IS the fix.
+        assert "note" in body
+        assert body["note"] is None
+        assert body["ci_type"] == 7
+
+    def test_body_signature_counts_the_null(self) -> None:
+        transport = _RecordingTransport({}, {}, require_signature=False)
+        client = build_client(transport)
+        client.request(
+            "PATCH", "/ci/1", json_body={"ci_type": 7, "note": None}
+        )
+        (req,) = transport.requests
+        body = json.loads(req.content)
+        assert body["_key"] == FAKE_KEY
+        expected = signing.sign(
+            "/api/v0.1/ci/1", FAKE_SECRET, {"ci_type": 7, "note": None}, keep_none=True
+        )
+        assert body["_secret"] == expected
+        # Explicitly NOT the 0.2.8 digest (nulls stripped from both the
+        # body and the signed set).
+        legacy = signing.sign("/api/v0.1/ci/1", FAKE_SECRET, {"ci_type": 7})
+        assert body["_secret"] != legacy
+
+    def test_body_without_null_unchanged(self) -> None:
+        # No nulls: keep_none=True and the legacy path produce the same
+        # digest, so every existing body-signed test stays valid.
+        transport = _RecordingTransport({}, {}, require_signature=False)
+        client = build_client(transport)
+        client.request("POST", "/ci", json_body={"ci_type": 7, "name": "web-01"})
+        (req,) = transport.requests
+        body = json.loads(req.content)
+        assert body["_secret"] == signing.sign(
+            "/api/v0.1/ci", FAKE_SECRET, {"ci_type": 7, "name": "web-01"}
+        )
