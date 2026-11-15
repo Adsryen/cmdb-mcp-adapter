@@ -5,15 +5,20 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
-## [Unreleased] - 2026-11-15（⛔ 未发版・⛔ 未构建镜像・⛔ 未动 224）
+## [0.3.0] - 2026-11-16
 
 ### Added
 
-* **规则闸 `rules_gate` 与 vendored 规则副本**：随包携带
-  `src/cmdb_mcp_adapter/rules/cmdb_rules.json`（ops 仓《CMDB录入规范》生成物的
-  只读副本，本次对齐 `sha256:2044f96a1f2951c7…`）。硬闸数值全部从该副本读数，
-  代码内无 `160/128/32` 字面量；副本与真源不一致时
-  `tests/test_rules_vendored.py` 判红（漂移报警器）。
+* **规则闸 `rules_gate` 与随包规则副本**：随包携带
+  `src/cmdb_mcp_adapter/rules/cmdb_rules.json`（本仓为公开 GitHub 仓，包内这份是
+  **卫生版**＝ops 仓《CMDB录入规范》生成物经打码管道的产物：结构逐点相等、
+  闸门阈值原样保留、现网实值全部占位，`sha256:b16943d6a6d69d21…`）。
+  硬闸数值全部从该副本读数，代码内无 `160/128/32` 字面量；
+  部署机以 `/opt/veops-mcp-adapter/rules/cmdb_rules.json`（真源）优先覆盖
+  （查找顺序见 `src/cmdb_mcp_adapter/rules/README.md`）。
+  `tests/test_rules_vendored.py` 双保险：常驻卫生门禁（提交面出现
+  内网地址／云 ID／工单号等真源形状即判红）＋可选漂移对撞
+  （`CMDB_RULES_SOURCE_PATH`＋`CMDB_REDACT_SCRIPT` 现场重跑打码器逐字节比对）。
 
 * **四个意图级工具**：`cmdb_preflight_write`（零写，出厂前自检）・
   `cmdb_create_card`（建卡并自动补四件套证据列与票号）・`cmdb_update_card`・
@@ -22,6 +27,8 @@ The project aims for [Semantic Versioning](https://semver.org/)
 
 ### Changed
 
+* 文档与测试样例值全部改为不可路由占位（`veops.example.com`、`ACC-0001`、
+  「intranet deployment」措辞），本公开仓不含现网地址与实值样例。
 * 工具总数 7 → 11；只读档（`READONLY_TOOL_NAMES`）4 → 5（预检零写故可见）。
   三个意图写工具仅在非只读档注册，且后端须实现 `IntentAdapter` 协议才广播
   （能力门控，mock 后端仍只见 7 个）。
