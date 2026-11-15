@@ -120,7 +120,7 @@ The project aims for [Semantic Versioning](https://semver.org/)
   inbound edges is a candidate for 0.2.9.
 * A CI whose edges are spread over many relation types pays one request per
   type, and each request re-downloads the full target payload.  Measured
-  pre-flight on intranet VeOps host (2026-09-22, 44 sampled CIs covering every
+  pre-flight on the existing intranet deployment (2026-09-22, 44 sampled CIs covering every
   out-degree band and every live relation type): **243 upstream calls /
   13.0 MB / 4.6 s / zero errors**.  Worst single instance `data_check`
   #2987 (292 edges): 8 calls, 1,254,542 bytes, 175 ms — the `count=all`
@@ -146,7 +146,7 @@ The project aims for [Semantic Versioning](https://semver.org/)
   the upstream exposes per type at
   `GET /ci_types/<type_id>/attributes`; attribute names are shared across
   types, so name inference cannot be correct in general.  Measured on the
-  intranet deployment (2026-09-21; 12 types, 265 binding rows):
+  existing intranet deployment (2026-09-21; 12 types, 265 binding rows):
   `business_system` reported **29** fields (the whole `business_*` set of
   `business_application`) against 2 real bindings, `runtime_platform`
   reported **0** against 31 (it binds `middlewa_*` rows), and
@@ -196,7 +196,7 @@ The project aims for [Semantic Versioning](https://semver.org/)
   parameters (`_key` / `_secret`).  The redaction filter only knows the exact
   configured secrets, so it redacted `_key` but wrote the 40-hex `_secret`
   **signature** verbatim to stderr / container logs (546 such lines per day on
-  the intranet deployment).  A captured line is replayable for that path
+  the existing intranet deployment).  A captured line is replayable for that path
   + params and lets an attacker verify candidate secrets offline.  Severity is
   *medium*: reading `docker logs` already implies host root, and the value is
   a derived signature, not the secret itself.  `configure_logging()` now pins
@@ -217,7 +217,7 @@ The project aims for [Semantic Versioning](https://semver.org/)
   the type), but the veops adapter issued a single unpaginated GET,
   so only the first 50 instances were ever returned (the endpoint
   was only ever probed on types with ≤ 50 CIs, which masked the
-  pagination).  On the intranet deployment this truncated every
+  pagination).  On the existing intranet deployment this truncated every
   type with more than 50 live CIs: `data_check` (772), `credential`
   (445), `middleware` (374), `business_application` (368),
   `operation_runbook` (236), `network` (113), `server` (62).  The
@@ -237,12 +237,12 @@ The project aims for [Semantic Versioning](https://semver.org/)
   endpoint** — VeOps `GET /attributes/s` is paginated (default page
   50; `page` / `page_size` honoured), but the veops adapter called it
   without pagination parameters, silently truncating the global
-  attribute dictionary to its first page.  On the intranet VeOps host
+  attribute dictionary to its first page.  On the existing intranet
   production deployment (210 attributes) this left `middleware`,
   `credential`, `operation_runbook`, `monitoring_component` and other
   types with empty `fields` in `get_models`.  The adapter now pages
   through the endpoint (`page=1,2,...`, requesting `page_size=500` —
-  verified to be honoured on the intranet deployment) until a
+  verified to be honoured on the existing intranet deployment) until a
   short or empty page arrives — the response carries no total count,
   so a short page is the end-of-data signal; a total that is an exact
   multiple of the page size costs one extra request (the terminating
@@ -281,7 +281,7 @@ The project aims for [Semantic Versioning](https://semver.org/)
   always keeps the full tool set regardless of the env value, so the
   existing write-path contract tests keep exercising the full surface.
 
-  Intended for production deployments (e.g. the intranet VeOps host VeOps
+  Intended for production deployments (e.g. the existing intranet VeOps
   stack) where the adapter's admin-level `users.key/secret` must not be
   able to mutate CMDB data: deploy with `VEOPS_READONLY=1` to expose a
   read-only MCP endpoint.  Default is write-enabled so local/sandbox
@@ -327,7 +327,7 @@ The project aims for [Semantic Versioning](https://semver.org/)
   against a real OneOps/VeOps 2.6.2 deployment: `get_models`
   (asserting the deployment's `quick_reference` and `credential` CI
   types), `get_instances("quick_reference")` (Chinese content fields),
-  and `search_instances("credential", "ACC-0166")`.
+  and `search_instances("credential", "ACC-0001")`.
 * **Contract-suite coverage for the veops adapter** — the MCP tool
   layer's `tools/list` output (names **and** JSON input schemas) is now
   asserted identical to the mock adapter's, so the frozen tool contract

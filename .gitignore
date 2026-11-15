@@ -66,3 +66,10 @@ node_modules/
 
 # Local isolated VeOps test sandbox (pulled snapshot from intranet VeOps host)
 veops-local-test/
+
+# The ONLY rules file allowed in git is the committed hygiene copy
+# (src/cmdb_mcp_adapter/rules/cmdb_rules.json — a redaction of the ops fact
+# source: same structure and thresholds, internal values masked).  A
+# ground-truth copy injected over it shows up as a modified tracked file and
+# CI's hygiene guard fails it — never commit ground truth.
+# See src/cmdb_mcp_adapter/rules/README.md.

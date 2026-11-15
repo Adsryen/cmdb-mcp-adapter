@@ -1,9 +1,13 @@
-"""Vendored rules-file drift alarm + per-hard-rule PASS/REJECT gate tests.
+"""Vendored rules-file hygiene + drift alarm and per-hard-rule PASS/REJECT gate tests.
 
-Design contract (DESIGN-layer3 测试面):
-* ``src/cmdb_mcp_adapter/rules/cmdb_rules.json`` is a byte-for-byte copy of
-  the ops fact source. ``CMDB_RULES_SOURCE_PATH`` pointing at the ops file
-  makes the sha256 collision a HARD failure on drift; unset = skip.
+Design contract (DESIGN-layer3 测试面, amended 2026-11-16):
+* ``src/cmdb_mcp_adapter/rules/cmdb_rules.json`` committed in this public repo is
+  the HYGIENE copy: structure-identical to the ops fact source with every
+  internal value masked (see ``rules/README.md``).  The ground-truth file must
+  never be committed here; CI's hygiene guard below fails it red.
+* ``CMDB_RULES_SOURCE_PATH`` (ops fact source) + ``CMDB_REDACT_SCRIPT`` (the ops
+  redactor) re-run the masking live and byte-collide against the vendored copy —
+  hard failure on drift.  Either env unset = skip (CI has no ops checkout).
 * Every hard rule gets a PASS and a REJECT case, with all thresholds READ
   FROM the rules file — the tests never restate 160/128/32 as literals
   (the only allowed assertion on those numbers is "gate read == vendored
@@ -16,6 +20,9 @@ import hashlib
 import json
 import os
 import re
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +32,28 @@ from cmdb_mcp_adapter import rules_gate as rg
 from cmdb_mcp_adapter.core.errors import ConfigurationError
 
 SOURCE_ENV = "CMDB_RULES_SOURCE_PATH"
+REDACTOR_ENV = "CMDB_REDACT_SCRIPT"
+
+# Hygiene shapes mirrored from ops/VeOps/cmdb-rules/hygiene_scan.py (single
+# source lives there; this table must stay a superset-consistent copy —
+# if ops adds a family, this guard should learn it too).
+HYGIENE_PATTERNS: dict[str, re.Pattern[str]] = {
+    "ip_any": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
+    "cloud_id": re.compile(
+        r"(?<![A-Za-z0-9])(?:rm|pgm|dds|mse|amv|pc|vpc|lb|oss|rabbitmq|r)-[A-Za-z0-9][A-Za-z0-9-]{5,}"
+        r"|\b[A-Z]{2,}-[A-Z]{2,}-[0-9A-F]{12,}\b"),
+    "host_alias": re.compile(r"\bcmdb\d{3}\b"),
+    "internal_domain": re.compile(r"\.(?:corp|internal|lan|local|intra)\b"),
+    "user_at": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9][A-Za-z0-9.-]*\b"),
+    "jump_host": re.compile(r"\b\d{2,3}跳板"),
+    "ticket_ci": re.compile(r"\bCI \d{3,5}(?:-\d{3,5})?\b"),
+    "inst_code": re.compile(r"\b(?:ACC|SRV|NET|SVC|MID|OPS|RUN|APP|MON)-\d{3,4}\b"),
+    "manual_sample": re.compile(r"\bMANUAL-[A-Za-z0-9._-]+\b"),
+    # NOTE: the scanner's 10th family (internal ASCII alias words) is deliberately
+    # NOT mirrored here — its vocabulary would itself leak the aliases into this
+    # public repo.  Structural families above already fail any ground-truth
+    # re-commit (private IPs / cloud IDs / ticket numbers are everywhere in it).
+}
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +77,7 @@ def _rejects(issues: list[rg.GateIssue]) -> list[rg.GateIssue]:
 
 def test_vendored_copy_present_and_parseable() -> None:
     assert rg.VENDORED_RULES_PATH.is_file(), (
-        "vendored rules copy missing: " + str(rg.VENDORED_RULES_PATH)
+        "vendored hygiene copy missing: " + str(rg.VENDORED_RULES_PATH)
     )
     data = json.loads(rg.VENDORED_RULES_PATH.read_text(encoding="utf-8"))
     for key in (
@@ -62,20 +91,50 @@ def test_vendored_copy_present_and_parseable() -> None:
     assert re.fullmatch(r"[0-9a-f]{64}", str(data["fingerprints"]["spec_sha256"]))
 
 
-def test_vendored_vs_ops_source_sha_collision() -> None:
-    """RED when the ops source drifted and the copy was not re-pulled."""
+def test_vendored_copy_is_hygiene_only_never_ground_truth() -> None:
+    """The committed copy must carry zero internal-value shapes (see header)."""
+    text = rg.VENDORED_RULES_PATH.read_text(encoding="utf-8")
+    offenders = {
+        name: len(pat.findall(text)) for name, pat in HYGIENE_PATTERNS.items()
+    }
+    offenders = {k: v for k, v in offenders.items() if v}
+    assert not offenders, (
+        "vendored rules copy contains ground-truth shapes " + repr(offenders)
+        + " — re-run the ops redactor and re-vendor (see rules/README.md)"
+    )
+    assert "<ip:redacted>" in text and "<project:redacted" in text, (
+        "vendored copy shows no redaction tokens — was the redactor skipped?"
+    )
+
+
+def test_vendored_copy_matches_ops_redactor() -> None:
+    """RED when the ops fact source drifted and the hygiene copy was not re-made."""
     source = os.environ.get(SOURCE_ENV)
     if not source:
-        pytest.skip(f"{SOURCE_ENV} unset — ops source not on this machine")
+        pytest.skip(f"{SOURCE_ENV} unset — ops fact source not on this machine")
     source_path = Path(source)
     if not source_path.is_file():
         pytest.skip(f"{SOURCE_ENV} points at a missing file")
-    vendored_sha = hashlib.sha256(rg.VENDORED_RULES_PATH.read_bytes()).hexdigest()
-    source_sha = hashlib.sha256(source_path.read_bytes()).hexdigest()
-    assert vendored_sha == source_sha, (
-        "vendored rules copy is DRIFTED from the ops fact source "
-        f"({source_path}); re-copy byte-for-byte, ⛔ hand-edit"
-    )
+    redactor = os.environ.get(REDACTOR_ENV) or str(source_path.parent / "redact_rules.py")
+    if not Path(redactor).is_file():
+        pytest.skip(f"{REDACTOR_ENV} / default redactor not found")
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        subprocess.run(
+            [sys.executable, redactor, "--in", str(source_path), "--out", str(tmp_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        made_sha = hashlib.sha256(tmp_path.read_bytes()).hexdigest()
+        vendored_sha = hashlib.sha256(rg.VENDORED_RULES_PATH.read_bytes()).hexdigest()
+        assert made_sha == vendored_sha, (
+            "vendored hygiene copy is DRIFTED from redact_rules.py(<ops source>) "
+            f"({source_path}); regenerate via ops pipeline, ⛔ hand-edit"
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def test_gate_thresholds_equal_vendored_file_values() -> None:

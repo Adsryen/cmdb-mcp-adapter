@@ -439,7 +439,7 @@ The test is **read-only** (`GET` only): it calls `list_models()`
 (asserting the deployment's `quick_reference` and `credential` CI types
 are present), `get_instances("quick_reference")` (asserting the Chinese
 content fields are non-empty), and
-`search_instances("credential", "ACC-0166")` (asserting the expected
+`search_instances("credential", "ACC-0001")` (asserting the expected
 hit).  Nothing in this repository contains a real credential; the
 secret-scan test keeps it that way.
 
