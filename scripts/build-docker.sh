@@ -87,7 +87,7 @@ echo "==> ${CMD[*]}"
 echo
 echo "Build complete. Run it with docker compose:"
 echo
-echo "  export MCP_AUTH_TOKEN='...' VEOPS_BASE_URL='https://cmdb.example.com/api' VEOPS_TOKEN='...'"
+echo "  export MCP_AUTH_TOKEN='...' VEOPS_BASE_URL='https://cmdb.example.com/api' VEOPS_KEY='...' VEOPS_SECRET='...'"
 echo "  docker compose up -d"
 echo "  curl -fsS http://localhost:8000/healthz"
 echo
@@ -96,5 +96,5 @@ echo
 echo "  docker run -d --name cmdb-mcp-adapter -p 8000:8000 \\"
 echo "    -e MCP_BIND_HOST=0.0.0.0 -e MCP_PORT=8000 -e MCP_ADAPTER=veops \\"
 echo "    -e MCP_AUTH_TOKEN='\$MCP_AUTH_TOKEN' \\"
-echo "    -e VEOPS_BASE_URL='\$VEOPS_BASE_URL' -e VEOPS_TOKEN='\$VEOPS_TOKEN' \\"
+echo "    -e VEOPS_BASE_URL='\$VEOPS_BASE_URL' -e VEOPS_KEY='\$VEOPS_KEY' -e VEOPS_SECRET='\$VEOPS_SECRET' \\"
 echo "    ${TAGS[0]}"
