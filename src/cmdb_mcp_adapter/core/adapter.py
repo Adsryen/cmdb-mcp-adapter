@@ -17,7 +17,7 @@ supported" apart from "the backend is down".
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from cmdb_mcp_adapter.core.models import (
     CMDBInstance,
@@ -90,3 +90,45 @@ class CMDBAdapter(Protocol):
         instance_id: str,
     ) -> list[CMDBRelation]:
         """Return the relations that originate from the given instance."""
+
+
+@runtime_checkable
+class IntentAdapter(Protocol):
+    """Optional capability: intent-level, rules-gated CMDB write tools.
+
+    Adapters that provide the layer-3 tools (:func:`cmdb_preflight_write`
+    etc.) implement this protocol; the core service degrades those tools to
+    :class:`~cmdb_mcp_adapter.core.errors.UnsupportedOperationError` for
+    adapters that do not.  Kept separate from :class:`CMDBAdapter` so the
+    original seven-tool contract surface stays frozen.
+    """
+
+    def cmdb_preflight_write(
+        self,
+        model_name: str,
+        fields: dict[str, Any],
+        ticket: str,
+        ci_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Zero-write verdict over the rules gates plus current-state reads."""
+
+    def cmdb_create_card(
+        self,
+        model_name: str,
+        ticket: str,
+        fields: dict[str, Any],
+        relations: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Rules-gated create with readback rulers and optional edges."""
+
+    def cmdb_update_card(
+        self,
+        model_name: str,
+        ci_id: str,
+        ticket: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Rules-gated update with the three post-write rulers."""
+
+    def cmdb_link_relations(self, ticket: str, edges: list[dict[str, Any]]) -> dict[str, Any]:
+        """Create verified relation edges (never delete)."""

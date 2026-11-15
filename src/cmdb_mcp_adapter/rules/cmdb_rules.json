@@ -1,0 +1,4320 @@
+{
+  "schema_version": "1.0.0",
+  "layer": "MCP三层方案·第①层 规则唯一事实源（终稿・五条裁决已编码）",
+  "status": "final（2026-11-15 主进程裁决 R-A1—R-A5 编码完毕；纸面修订按 consistency_flags/doc_tables_to_regenerate 排队）",
+  "generated_at_utc": "2026-11-15T15:01:12Z",
+  "mode": "online",
+  "fingerprints": {
+    "spec_version": "v2.89",
+    "spec_doc": "ops/VeOps/docs/CMDB录入规范.md",
+    "spec_sha256": "9ccf66cc26f85233b06fe3941352279f9f765501259b95aa36a63e1544dfcee6",
+    "spec_sha256_note": "词表读数时刻所依据规范文件的 sha256（在线刷新时重算；离线产物内为 manifest 钉值，实算对撞＝check_rules_load.py）",
+    "vocab_read_at_utc": "2026-11-15T15:01:12Z",
+    "vocab_read_at_per_leg_utc": {
+      "q1": "2026-11-15T15:01:10Z",
+      "q2": "2026-11-15T15:01:11Z",
+      "q3": "2026-11-15T15:01:11Z",
+      "q4": "2026-11-15T15:01:11Z",
+      "q5": "2026-11-15T15:01:12Z"
+    },
+    "fixture_sha256": {
+      "q1.out": "4c132853dd16171352da68c1334914288e8921d1c173073037956efc2c1ffc79",
+      "q1.sql": "a1c13deb3350858b687593a577046535ca39105fd68935e307934451acf481e0",
+      "q2.out": "d4a5a8ee8c05cdf5dc18e5d7d3f7b7ad8c1ba5e660cf0d71f16fe2ebe232313b",
+      "q2.sql": "27945a16fcd748ebd5f68c4f3b3a3840e804f06d02fcf9c1ad8c1208a17ab26b",
+      "q3.out": "a4fc8cf7bd81c93f1bb4b74e27046b0a35620b1d59e702f84709896ace774eb3",
+      "q3.sql": "ea65efd4262729a2669f821c8a4f3ceda94815a428a5d66b97060214d76bd732",
+      "q4.out": "61cecc202084d0bca692a5dd07befc6c33d2e21fd14ee463736b47aa8e33d9f5",
+      "q4.sql": "0c045e7193117b4c6481ddadfcc3b79da6f7730a7a4db58785f8dc828079c026",
+      "q5.out": "20923585f08fe9b9e4765f3437988dd51945791499364aa1a8e91b23450f2d17",
+      "q5.sql": "9118dd532dec817e478d8d797ea5bfefdaefc5a585150962031fdab1a3d73af4"
+    },
+    "handoff_doc": "ops/VeOps/nginx-gateway/<ip:redacted>/changes/2026-11-15-mcphub-site/2026-11-15-mcp-dev-handoff.md",
+    "offline_determinism": "离线产物＝reads/ 件 sha256（逐件校验）＋manifest 常数 的纯函数 ⇒ 双跑逐字节一致；在线模式才写当前时刻"
+  },
+  "source": {
+    "db": "<host:redacted> 别名 → docker veops-cmdb-db / mysql cmdb 库（只读现读：c_attributes/c_choice_texts/c_ci_type_attributes/c_ci_types/c_value_texts/c_value_index_texts/c_ci_type_relations/c_relation_types）",
+    "fixtures": [
+      "q1.sql",
+      "q2.sql",
+      "q3.sql",
+      "q4.sql",
+      "q5.sql",
+      "manifest.json"
+    ],
+    "gate_executor": "ops/VeOps/cmdb-audit/2026-09-21/py/text_face_guard.py（T1/T2/T3 执行器本体・本文件不复制其码点全集）"
+  },
+  "discipline": [
+    "词表/绑定/必填/键形分布＝库内现读（⛔ 抄文档；文档不一致者 15 枚进 consistency_flags）",
+    "文档常量逐条带 §号＋行号（rules.*.source）",
+    "漂移⛔ 抹平＝双记＋flags",
+    "本文件＝规则事实源，⛔ 执行开关（D-72 豁免类开关按 R-A5 留在执行侧）",
+    "消费方见 consumers（api 校验器②层／预检脚本／写库 wrapper／速查卡③层）"
+  ],
+  "adjudications": [
+    {
+      "id": "R-A1",
+      "date": "2026-11-15",
+      "decided_by": "主进程",
+      "ruling": "record_status 类词面校验＝只 WARN 不拒；硬拦时机＝该列清洗完成后由人工再开。",
+      "rationale": "存量「待摸排」量大（裁决文书记 1,804 格；本快照 c_value_texts 面现读 8 枚标记列合计 1,188 格），硬拦会把真写挡成 400。",
+      "encoded_in": "rules.four_piece_set.record_status_markers.write_gate_policy"
+    },
+    {
+      "id": "R-A2",
+      "date": "2026-11-15",
+      "decided_by": "主进程",
+      "ruling": "MANUAL-* 键形正则只在已现读到形制的 attr63 面强制；attr86/106/143 二段列 observe_only；历史小写 manual: 异形＝新写拒绝、存量豁免（apply_to:\"new_writes\"）。",
+      "encoded_in": "rules.import_key.key_form_enforcement"
+    },
+    {
+      "id": "R-A3",
+      "date": "2026-11-15",
+      "decided_by": "主进程",
+      "ruling": "DR-04（给 attr106/143 补 is_unique）＝元数据写 ⇒ 只登记「需用户点头」条目；⛔ 生成器自动改库、⛔ 假装已做。",
+      "encoded_in": "pending_user_approval[0]・consistency_flags[DR-04].verdict"
+    },
+    {
+      "id": "R-A4",
+      "date": "2026-11-15",
+      "decided_by": "主进程",
+      "ruling": "DR-01（attr111 库面 10 词⇄文档 8 词）＝以库为准改文档口径；rules 存库面 10 词＋「文档待同步」标记。",
+      "encoded_in": "rules.vocabulary.attrs[\"111\"].doc_pending_sync・consistency_flags[DR-01].verdict"
+    },
+    {
+      "id": "R-A5",
+      "date": "2026-11-15",
+      "decided_by": "主进程",
+      "ruling": "D-72 的 T2 备注≤160 豁免开关＝预检脚本侧执行配置，⛔ 写进规则事实源。",
+      "encoded_in": "rules.note_format.d72_t2_exempt_execution_config（仅指针，无开关值；旧草案键 t2_exemption_D72 已删除）"
+    }
+  ],
+  "pending_user_approval": [
+    {
+      "id": "DR-04",
+      "title": "给 attr 106/143 补 is_unique=1（对齐其余 15 枚导入唯一键列）",
+      "class": "元数据写（D-42 通道）",
+      "status": "awaiting_user_nod（待用户点头）",
+      "done": false,
+      "how": "点头后走元数据写通道执行＋改前存档；⛔ 本生成器/本文件自动执行",
+      "decided_by": "主进程裁决 R-A3（2026-11-15）",
+      "source": "consistency_flags DR-04・§13.8 步0/步1（元数据面）"
+    },
+    {
+      "id": "DR-13",
+      "title": "给无搜索关键词列的五型（服务器/应用/网络服务/操作台账/数据核对）补该列，或改规范措辞承认别名只能落备注",
+      "class": "元数据写（D-42 通道）或纸面改写（§13.12 R-C1/R-C6）",
+      "status": "awaiting_user_nod（待用户点头）",
+      "done": false,
+      "how": "点头后走元数据写通道（建列＋类型绑定）并改规范；⛔ 本生成器自动执行",
+      "decided_by": "主进程 11-15 现读发现（M9 冒烟副产品）",
+      "source": "consistency_flags DR-13"
+    }
+  ],
+  "consumers": [
+    {
+      "name": "T1/T2/T3 执行器（刀面本体）",
+      "path": "ops/VeOps/cmdb-audit/2026-09-21/py/text_face_guard.py",
+      "status": "在册执行器；禁符区间唯一实现源＝其 banned_char()；应改为直读本文件区段清单＋保留刀面兜底"
+    },
+    {
+      "name": "预检切格器",
+      "path": "ops/VeOps/cmdb-audit/2026-09-21/py/notes_cut_col.py",
+      "status": "闸值现内嵌；将来应直读 rules.note_format / banned_symbols_T1 / ticket / import_key"
+    },
+    {
+      "name": "开发线写库 wrapper",
+      "path": "/tmp/mcpdev/mcp_write.py",
+      "status": "本地闸四处（票号≤32 L162・备注>160 L173・is_index>128 L175・禁符 L178）；将来应改成直读本文件"
+    },
+    {
+      "name": "api 校验器（第②层）",
+      "path": "/tmp/mcpdev/api-gate/（DESIGN/draft/tests，草案未上线）",
+      "status": "上线后以本文件为唯一词表/闸值源；⛔ 在②层另抄一套死值（D-37）"
+    },
+    {
+      "name": "mcphub 内置速查卡（第③层）",
+      "path": "ops/VeOps/nginx-gateway/<ip:redacted>/changes/2026-11-15-mcphub-site/2026-11-15-mcp-dev-handoff.md（层计划）",
+      "status": "速查卡应由本文件渲染生成，⛔ 手抄第二套"
+    }
+  ],
+  "py_dir_decision": "预检器不迁移：执行器/切格器本体在册于 ops/VeOps/cmdb-audit/2026-09-21/py/；cmdb-rules 目录只放 生成器＋reads/＋cmdb_rules.json＋最小消费器 check_rules_load.py，不建 py/",
+  "rules": {
+    "note_format": {
+      "max_len": 160,
+      "max_len_source": "§16.1 L693（T2＝单行≤160字）・§13.8 L410（三闸皆硬拦）",
+      "single_line": true,
+      "three_segment_pattern": "事实；出处＝实测方式或证据件路径；YYYY-MM-DD",
+      "three_segment_source": "§16.1 L693（D-63・v2.60 收紧）",
+      "example_verbatim": "承载 milvus v2.6.17 等 6 容器；出处＝<host:redacted>只读SSH；2026-10-22",
+      "example_source": "§16.1 L693 范例（逐字照抄）",
+      "bad_example_source": "§16.1 L693（S343 派单 1.1 原句＝不合规样例：出处段不带＝、第三段写成「核验」）",
+      "append_only": true,
+      "append_gate": "痕面 append 同受160字闸；追加后超160 ⇒ 同批内蒸馏（§16.1 L695）",
+      "one_fact_cluster_per_cell": "§16.1 L694",
+      "empty_allowed": "176/177/生命周期/证据状态/关系边齐 ⇒ 可空，⛔ 填充句（§13.8 L414）",
+      "d72_t2_exempt_execution_config": {
+        "status": "NOT_in_rules_source_of_truth",
+        "decided_by": "主进程裁决 R-A5（2026-11-15）",
+        "lives_in": "预检脚本执行侧开关 NOTE_T2_EXEMPT=<名册tsv>（ops/VeOps/cmdb-audit/2026-09-21/py/ 调用面）",
+        "rule_fact_kept_here": "T2≤160 闸本体与 attr41 名册豁免口径的文档描述仍照 §13.8 L411・§14.8 L604-610（仅为口径描述，不构成执行开关）"
+      },
+      "four_banned_kinds": {
+        "ops": "操作类→type8 台账卡 attr135＋挂边，备注只留「操作见 <OPS 编号>」",
+        "governance_trace": "治理过程痕→审计册/票面/c_records.reason，⛔ 卡上备注",
+        "todo_status": "待办/状态类→*_record_status 两轴列与 type9 卡",
+        "credential_plaintext": "凭据明文→凭据卡密钥值格，原备注只留「口令见 <ACC 编号>」",
+        "source": "§13.8 L413（R-4）・§16.3 L717-721"
+      },
+      "source": "§16.1 L690-696・§13.8 L410-415"
+    },
+    "banned_symbols_T1": {
+      "gate_executor": "ops/VeOps/cmdb-audit/2026-09-21/py/text_face_guard.py banned_char()（区间制・刀面唯一实现源・⛔ 手抄枚数＝D-37；规范原文写 py/text_face_guard.py 为审计目录相对口径）",
+      "ranges": [
+        {
+          "lo": "U+2190",
+          "hi": "U+21FF",
+          "name": "箭头族"
+        },
+        {
+          "lo": "U+2460",
+          "hi": "U+24FF",
+          "name": "带圈数字与罗马数字"
+        },
+        {
+          "lo": "U+25A0",
+          "hi": "U+25FF",
+          "name": "几何图形"
+        },
+        {
+          "lo": "U+2600",
+          "hi": "U+26FF",
+          "name": "杂项符号"
+        },
+        {
+          "lo": "U+2700",
+          "hi": "U+27BF",
+          "name": "装饰符号"
+        },
+        {
+          "lo": "U+2B00",
+          "hi": "U+2BFF",
+          "name": "杂项符号与箭头"
+        },
+        {
+          "lo": "U+FE00",
+          "hi": "U+FE0F",
+          "name": "变体选择符（执行面＝静默删除，非拒绝）"
+        },
+        {
+          "lo": "U+1F000",
+          "hi": "U+1FAFF",
+          "name": "emoji 主区"
+        }
+      ],
+      "ranges_source": "§16.2 L714",
+      "extra_banned": "EXTRA_BANNED 现算 21 枚（⛔ 写死枚数＝D-37；判定唯一入口 banned_char()）",
+      "explicitly_not_banned": {
+        "chars": [
+          "U+00B7",
+          "U+2027",
+          "U+30FB"
+        ],
+        "why": "中文人名/日文正文小圆点＝允许，入集会整批误拦（§16.2 L714・coord S345 令 1 D-62）"
+      },
+      "removed_silently": [
+        "U+FEFF",
+        "U+200B—U+200D",
+        "U+2060",
+        "U+FE00—U+FE0F（变体选择符，不承载语义→删）"
+      ],
+      "glyph_freq_reference": [
+        {
+          "glyph": "⛔",
+          "codepoints": [
+            "U+26D4"
+          ],
+          "freq_doc": 16850
+        },
+        {
+          "glyph": "⇒",
+          "codepoints": [
+            "U+21D2"
+          ],
+          "freq_doc": 3569
+        },
+        {
+          "glyph": "→",
+          "codepoints": [
+            "U+2192"
+          ],
+          "freq_doc": 3292
+        },
+        {
+          "glyph": "⚠",
+          "codepoints": [
+            "U+26A0"
+          ],
+          "freq_doc": 784
+        },
+        {
+          "glyph": "⚠️",
+          "codepoints": [
+            "U+26A0",
+            "U+FE0F"
+          ],
+          "freq_doc": 727
+        },
+        {
+          "glyph": "⇄",
+          "codepoints": [
+            "U+21C4"
+          ],
+          "freq_doc": 234
+        },
+        {
+          "glyph": "←",
+          "codepoints": [
+            "U+2190"
+          ],
+          "freq_doc": 13
+        },
+        {
+          "glyph": "✅",
+          "codepoints": [
+            "U+2705"
+          ],
+          "freq_doc": 1
+        }
+      ],
+      "soft_env": "TEXT_GUARD_SOFT=1 只降 T3；T1/T2 永远硬拦；用过必须在交回里申报（§13.8 L410）",
+      "public_ip_arrow": "公网列无豁免：在册正形＝无箭头中文形制「公网 <IP>:<前端口> NAT 映射到内网 <IP>:<端口>」（§13.7 L374・v2.78）",
+      "source": "§16.2 L698-716・§13.8 L410"
+    },
+    "carry_map_T3_symbols": {
+      "scope": "D-72/D-73 名册腿内 attr 41 清洗格；⛔ 其他备注列、⛔ 新写（新写一律 160 单行）",
+      "scope_source": "§14.9 L615・§14.8 L602-610",
+      "source": "§14.9 L617-618",
+      "pairs": [
+        {
+          "from": "⛔",
+          "codepoints": [
+            "U+26D4"
+          ],
+          "to": "禁"
+        },
+        {
+          "from": "⇒",
+          "codepoints": [
+            "U+21D2"
+          ],
+          "to": "故"
+        },
+        {
+          "from": "→",
+          "codepoints": [
+            "U+2192"
+          ],
+          "to": "至"
+        },
+        {
+          "from": "←",
+          "codepoints": [
+            "U+2190"
+          ],
+          "to": "自"
+        },
+        {
+          "from": "⇄",
+          "codepoints": [
+            "U+21C4"
+          ],
+          "to": "交"
+        },
+        {
+          "from": "✅",
+          "codepoints": [
+            "U+2705"
+          ],
+          "to": "对"
+        },
+        {
+          "from": "⚠️",
+          "codepoints": [
+            "U+26A0",
+            "U+FE0F"
+          ],
+          "to": "注意",
+          "note": "2⇄2，须先于单字符⚠替换（§16.2 L709）"
+        },
+        {
+          "from": "⚠",
+          "codepoints": [
+            "U+26A0"
+          ],
+          "to": "警"
+        }
+      ],
+      "range_pairs": {
+        "from_lo": "U+2460",
+        "from_hi": "U+2473",
+        "to": [
+          "1",
+          "2",
+          "…",
+          "20"
+        ],
+        "rule": "①—⑳ 按偏移映射到 1—20（多位数 2⇄1 例外已在册，长度中立按 §14.9 L619 断言兜）"
+      },
+      "delete_set": {
+        "codepoints": [
+          "U+FE00—U+FE0F",
+          "U+FEFF",
+          "U+200B—U+200D",
+          "U+2060"
+        ],
+        "rule": "删（不承载语义）"
+      },
+      "newline_fold": {
+        "regex": "[\\n\\r\\t]+",
+        "to": "；",
+        "conditional": "前邻已是；/;/。 或位于串首串尾 ⇒ 只丢分隔符本身（⛔ 叠分号・⛔ 丢正文）",
+        "source": "§14.9 L618"
+      },
+      "hard_asserts": [
+        "单调收缩 len(新)≤len(旧)-1",
+        "单行",
+        "T1清零（text_face_guard scan_symbols）",
+        "业务锚零丢失（notes_clean anchor_list・anchors_lost=0）"
+      ],
+      "hard_asserts_source": "§14.9 L619",
+      "dual_source_ban": "承接表唯一事实源＝§14.9＋py/notes_clean.py；纸面⇄刀面发车前逐条对撞（§14.9 L621）"
+    },
+    "ticket": {
+      "column": "c_records.ticket_id",
+      "db_max_len": 32,
+      "db_max_len_source": "实测＝交接件 L31（连库腿 SHOW COLUMNS c_records＝varchar(32)，现读快照未附独立件）；口径＝§13.8 L384・§13.10.1 L448",
+      "governance_form": "gov2-b<批次序数>-s<S号>",
+      "external_form": "imp-<写入方短名>-<YYYYMMDD-HHMMSS>",
+      "timestamp_tz": "Asia/Shanghai（⛔ 拿 UTC 填）",
+      "banned_for_external": [
+        "gov2-b*",
+        "S*",
+        "b<序数>",
+        "out/<号>"
+      ],
+      "note_trace_head": "[<轮号> <票号>]",
+      "note_trace_body_four": [
+        "改前原词逐字",
+        "改后值",
+        "判据出处",
+        "⛔未上机声明"
+      ],
+      "source": "§13.8 L384・§13.10.1 L448・交接件 L31"
+    },
+    "import_key": {
+      "column_concept": "各型「导入唯一键」列（*_source_key）＝业务主键，非资源编号列",
+      "key_form_template": "<KEY_FORM>-<源tid>-<项目代号>-<环境段>-<短名>",
+      "key_form_template_source": "§13.8 L394",
+      "key_form_by_type_doc": {
+        "4": "<sample:redacted>",
+        "5": "<sample:redacted>",
+        "note": "§13.8 L394 只钉 4/5 两型；交接件 L11 写正则 MANUAL-(APP|RB|NETWORK)-…（RB≈type8・NETWORK≈type6＝纸面推断，库面二段现读仅 63 面全=APP）"
+      },
+      "handoff_regex_literal": "MANUAL-(APP|RB|NETWORK)-…（交接件 L11）",
+      "project_codes_six": [
+        "JG",
+        "OPC",
+        "RECRUIT",
+        "PUB",
+        "YQLG",
+        "XHJY"
+      ],
+      "project_codes_meaning": {
+        "PUB": "公司公共",
+        "YQLG": "<project:redacted>（证据主机名 <internal:redacted>）",
+        "XHJY": "<project:redacted>（证据 /data/<internal:redacted>/*）"
+      },
+      "env_segments": [
+        "PROD",
+        "UAT"
+      ],
+      "env_rule": "环境段＝现读该卡环境列词表映射取值；⛔ 计划腿硬编码 PROD（#634）",
+      "placeholder_exemption": {
+        "rule": "归占位项目（type11）时项目代号段取证据线索短码、环境未核准时环境段取 TBC",
+        "examples": [
+          "<sample:redacted> (CI <num:redacted>)",
+          "<sample:redacted> (CI <num:redacted>)"
+        ],
+        "bans": [
+          "⛔ 拿在册六真代号冒充",
+          "⛔ 占位改名/并档后回改已入库键形（只进不出）"
+        ],
+        "source": "§13.8 L394"
+      },
+      "bans": [
+        "⛔ 跨型沿用老前缀",
+        "⛔ 自造第七代号",
+        "⛔ MANUAL-* 伪编号进资源编号列（§2.2 L64）",
+        "⛔ <sample:redacted>-* 当资产编号（§3 L242）"
+      ],
+      "db_recheck_actual_note": "库面 re_check 仅 attr25/132 两枚（见 field_constraints）；MANUAL-* 键形＝纸面约定、库内无正则闸门（DR-02）",
+      "resource_id_forms": {
+        "server_resource_id": "^SRV-[0-9]{4}$",
+        "operatio_resource_id": "^OPS-[0-9]{4}$"
+      },
+      "source": "§13.8 L394・§2.2 L64・交接件 L11",
+      "key_form_enforcement": {
+        "decided_by": "主进程裁决 R-A2（2026-11-15）",
+        "source": "reads/q5.out KEYFORM_*/MANUAL2_63（现读）＋§13.8 L394（模板）",
+        "enforce": {
+          "attrs": [
+            "63"
+          ],
+          "regex": "^<sample:redacted>-",
+          "on_violation_new_writes": "reject",
+          "basis": "attr63 面 MANUAL 二段现读 70/70 全=APP（唯一读全形制的面）；五段模板其余段由第②层按 §13.8 L394 口径核对"
+        },
+        "observe_only": {
+          "attrs": [
+            "86",
+            "106",
+            "143"
+          ],
+          "manual_cells_now_read": {
+            "86": 70,
+            "106": 30,
+            "143": 76
+          },
+          "on_violation": "record_only（不拒）",
+          "reason": "MANUAL 二段制式未逐一现读全（DR-12）；在线刷腿时顺带补齐再谈升格"
+        },
+        "lowercase_manual_variant": {
+          "pattern_family": "^manual:",
+          "apply_to": "new_writes",
+          "reject_new_writes": true,
+          "exempt_existing": true,
+          "observed_by_attr": {
+            "42": {
+              "cells": 3,
+              "forms": [
+                "manual:<ip:redacted>:20261013",
+                "manual:<ip:redacted>:20261014",
+                "manual:<ip:redacted>:20261013"
+              ]
+            },
+            "86": {
+              "cells": 124,
+              "forms": [
+                "manual:<ip:redacted>/archery",
+                "manual:<ip:redacted>/new",
+                "manual:<ip:redacted>/jms",
+                "manual:<ip:redacted>/rds",
+                "manual:<ip:redacted>/vmware_exporter",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/alertmanager:20261023",
+                "manual:<ip:redacted>/archery:20261013",
+                "manual:<ip:redacted>/blackbox_exporter:20261024",
+                "manual:<ip:redacted>/cadvisor:20261028",
+                "manual:<ip:redacted>/goinception:20261013",
+                "manual:<ip:redacted>/grafana:20261023",
+                "manual:<ip:redacted>/harbor",
+                "manual:<ip:redacted>/jumpserver:20261013",
+                "manual:<ip:redacted>/loki:20261028",
+                "manual:<ip:redacted>/nginx",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/one",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/prometheus:20261023",
+                "manual:<ip:redacted>/webhook",
+                "manual:<ip:redacted>/node_exporter:20261103",
+                "manual:<ip:redacted>/process_exporter:20261103",
+                "manual:<ip:redacted>/node_exporter:20261103",
+                "manual:<ip:redacted>/process_exporter:20261103",
+                "manual:<ip:redacted>/node_exporter:20261103",
+                "manual:<ip:redacted>/process_exporter:20261103",
+                "manual:<ip:redacted>/node_exporter:20261103",
+                "manual:<ip:redacted>/process_exporter:20261103",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/cadvisor:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/vnstat_exporter:20261028",
+                "manual:<ip:redacted>/cadvisor:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/vnstat_exporter:20261028",
+                "manual:<ip:redacted>/archery",
+                "manual:<ip:redacted>/harbor_exporter:20261013",
+                "manual:<ip:redacted>/jms",
+                "manual:<ip:redacted>/newapi_metrics_exporter:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261013",
+                "manual:<ip:redacted>:9182:20261014",
+                "manual:<ip:redacted>/cadvisor:20261013",
+                "manual:<ip:redacted>/higress",
+                "manual:<ip:redacted>/mysqld_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261013",
+                "manual:<ip:redacted>/promtail:20261028",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261013",
+                "manual:<ip:redacted>/cadvisor:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/nvidia_gpu_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/cadvisor:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/cadvisor:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261013",
+                "manual:<ip:redacted>/cadvisor:20261028",
+                "manual:<ip:redacted>/node_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/nvidia_gpu_exporter:20261028",
+                "manual:<ip:redacted>/vllm:20261028",
+                "manual:<ip:redacted>/cadvisor:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/nvidia_gpu_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/higress",
+                "manual:<ip:redacted>/jvm",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/nvidia_gpu_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/cadvisor:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/cadvisor:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261013",
+                "manual:<ip:redacted>/cadvisor:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/process_exporter:20261028",
+                "manual:<ip:redacted>/node_exporter:20261013",
+                "manual:<ip:redacted>/nvidia_gpu_exporter:20261013",
+                "manual:<ip:redacted>/process_exporter:20261013",
+                "manual:<ip:redacted>/smartctl_exporter:20261013"
+              ]
+            }
+          },
+          "note": "存量豁免＝不判脏不回改（只进不出・§13.12 R-C11 L478 同源精神）；本条表达＝新写面拦、存量放过"
+        }
+      }
+    },
+    "vocabulary": {
+      "source_of_truth": "库面 c_choice_texts 现读（本文件即快照・读数时刻见 fingerprints.vocab_read_at_utc），⛔ 从文档抄死值",
+      "source": "库面 reads/q1.out CHOICE_ATTRS/CHOICE_VALUES・reads/q3.out CHOICE_OTHER_JSON（现读）",
+      "attr_count": 46,
+      "static_value_total": 320,
+      "dynamic_or_hybrid_attrs": [
+        22,
+        46,
+        67,
+        110,
+        129
+      ],
+      "attrs": {
+        "9": {
+          "attr_name": "source_d_source_role",
+          "alias": "来源角色",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "正式源文件",
+            "配套文档",
+            "历史试版参考"
+          ],
+          "n_values": 3
+        },
+        "10": {
+          "attr_name": "source_d_format",
+          "alias": "格式",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            ".md",
+            ".xlsx",
+            ".pdf",
+            ".docx",
+            ".xls"
+          ],
+          "n_values": 5
+        },
+        "16": {
+          "attr_name": "source_d_processing",
+          "alias": "本次处理",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "结构化导入",
+            "来源登记，不重复导入"
+          ],
+          "n_values": 2
+        },
+        "22": {
+          "attr_name": "server_project",
+          "alias": "项目/系统",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "dynamic",
+          "choice_other_binding_json": "{\"filter\": \"\", \"attr_id\": \"206\", \"type_ids\": [\"11\"]}",
+          "values": [],
+          "n_values": 0
+        },
+        "23": {
+          "attr_name": "server_environment",
+          "alias": "环境",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "生产",
+            "UAT",
+            "测试",
+            "开发",
+            "演示",
+            "待确认"
+          ],
+          "n_values": 6
+        },
+        "34": {
+          "attr_name": "server_os",
+          "alias": "操作系统",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "Ubuntu 18.04",
+            "Ubuntu 22.04",
+            "Ubuntu 24.04",
+            "CentOS 7",
+            "CentOS 8",
+            "Windows Server 2016",
+            "Windows 11",
+            "TencentOS Server 3",
+            "中标麒麟",
+            "银河麒麟 V10",
+            "待确认",
+            "Windows Server 2019",
+            "Ubuntu 22.04.4 LTS（内核 5.15.0-117-generic）",
+            "Ubuntu 22.04.5 LTS（内核 5.15.0-164-generic）",
+            "Ubuntu 22.04.5 LTS（内核 5.15.0-142-generic）",
+            "CentOS Linux 7 (Core)",
+            "Ubuntu 22.04.5 LTS",
+            "Ubuntu 24.04 LTS",
+            "Kylin Linux Advanced Server V10 (Lance)",
+            "Ubuntu 24.04.2 LTS",
+            "CentOS Linux 8",
+            "NeoKylin Linux Advanced Server V7Update6 (Chromium)",
+            "Ubuntu 22.10",
+            "Ubuntu 24.04.3 LTS",
+            "Ubuntu 24.04.4 LTS"
+          ],
+          "n_values": 25
+        },
+        "46": {
+          "attr_name": "business_project",
+          "alias": "项目/系统",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "dynamic",
+          "choice_other_binding_json": "{\"filter\": \"\", \"attr_id\": \"206\", \"type_ids\": [\"11\"]}",
+          "values": [],
+          "n_values": 0
+        },
+        "47": {
+          "attr_name": "business_environment",
+          "alias": "环境",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "生产",
+            "UAT",
+            "测试",
+            "开发",
+            "演示",
+            "待确认"
+          ],
+          "n_values": 6
+        },
+        "67": {
+          "attr_name": "middlewa_project",
+          "alias": "项目/系统",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "dynamic",
+          "choice_other_binding_json": "{\"filter\": \"\", \"attr_id\": \"206\", \"type_ids\": [\"11\"]}",
+          "values": [],
+          "n_values": 0
+        },
+        "68": {
+          "attr_name": "middlewa_environment",
+          "alias": "环境",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "生产",
+            "UAT",
+            "测试",
+            "开发",
+            "演示",
+            "待确认"
+          ],
+          "n_values": 6
+        },
+        "71": {
+          "attr_name": "middlewa_asset_category",
+          "alias": "资产类别",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "数据库",
+            "缓存",
+            "消息队列",
+            "配置中心/注册中心",
+            "对象存储",
+            "Web代理",
+            "容器平台",
+            "向量/图数据库",
+            "搜索引擎",
+            "运行环境",
+            "其他中间件",
+            "历史部署证据（非资产）",
+            "待分类"
+          ],
+          "n_values": 13
+        },
+        "92": {
+          "attr_name": "network__category",
+          "alias": "资源类别",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "主机监听端点",
+            "应用访问入口",
+            "管理服务端点",
+            "外部服务",
+            "待分类",
+            "公网出口/NAT",
+            "网络构造"
+          ],
+          "n_values": 7
+        },
+        "93": {
+          "attr_name": "network__network_zone",
+          "alias": "网络区域",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "内网/VPN",
+            "公网",
+            "内网/待确认",
+            "待确认"
+          ],
+          "n_values": 4
+        },
+        "110": {
+          "attr_name": "credenti_project",
+          "alias": "项目/系统",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "hybrid",
+          "choice_other_binding_json": "{\"filter\": \"\", \"attr_id\": \"206\", \"type_ids\": [\"11\"]}",
+          "values": [
+            "待确认",
+            "公司公共",
+            "<project:redacted-01>",
+            "<project:redacted-02>",
+            "<project:redacted-03>",
+            "运维管理",
+            "<project:redacted-04>",
+            "<project:redacted-05>",
+            "<project:redacted-06>",
+            "<project:redacted-07>",
+            "<project:redacted-08>",
+            "TDSQL国产化数据库",
+            "<project:redacted-09>",
+            "<project:redacted-10>",
+            "<project:redacted-11>",
+            "<project:redacted-12>",
+            "<project:redacted-13>",
+            "<project:redacted-14>",
+            "<project:redacted-15>",
+            "<project:redacted-16>",
+            "<project:redacted-17>",
+            "<project:redacted-18>",
+            "<project:redacted-19>",
+            "<project:redacted-20>",
+            "<project:redacted-21>",
+            "<project:redacted-22>",
+            "<project:redacted-23>",
+            "<project:redacted-24>",
+            "<project:redacted-25>",
+            "<project:redacted-26>",
+            "<project:redacted-27>"
+          ],
+          "n_values": 31
+        },
+        "111": {
+          "attr_name": "credenti_environment",
+          "alias": "环境",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "生产",
+            "UAT",
+            "测试",
+            "开发",
+            "演示",
+            "待确认",
+            "内网演示",
+            "正式/UAT",
+            "内网",
+            "内网-VPN"
+          ],
+          "n_values": 10,
+          "doc_pending_sync": "DR-01 已裁决 R-A4（2026-11-15）：以库面 10 词为准改文档 §4.2 L181（现记 8 词）；文档修订＝纸面一枪，本文件保持库面词表"
+        },
+        "114": {
+          "attr_name": "credenti_config_type",
+          "alias": "配置类型",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "待分类",
+            "微服务配置",
+            "数据库连接",
+            "缓存连接",
+            "配置中心",
+            "消息队列",
+            "对象存储",
+            "外部集成",
+            "接口密钥",
+            "账号认证",
+            "账号凭据",
+            "服务器操作系统登录凭据",
+            "环境变量",
+            "中间件登录凭据",
+            "云服务AccessKey",
+            "百炼APIKey"
+          ],
+          "n_values": 16
+        },
+        "129": {
+          "attr_name": "operatio_project",
+          "alias": "项目/系统",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "dynamic",
+          "choice_other_binding_json": "{\"filter\": \"\", \"attr_id\": \"206\", \"type_ids\": [\"11\"]}",
+          "values": [],
+          "n_values": 0
+        },
+        "130": {
+          "attr_name": "operatio_environment",
+          "alias": "环境",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "生产",
+            "UAT",
+            "测试",
+            "开发",
+            "演示",
+            "待确认"
+          ],
+          "n_values": 6
+        },
+        "153": {
+          "attr_name": "data_che_check_type",
+          "alias": "核对类型",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "外部台账承载关系",
+            "资源关系",
+            "外部台账资源匹配",
+            "承载服务器",
+            "凭据资源绑定",
+            "凭据资源关系",
+            "服务器登录凭据回填",
+            "项目归属规范化",
+            "环境字段规范化",
+            "运行状态",
+            "端点状态",
+            "Trellis规范服务器扫描",
+            "重复候选",
+            "重复服务器",
+            "源 Sheet 覆盖",
+            "跨Sheet服务器覆盖",
+            "正式 XLSX 遗漏行补录",
+            "遗漏行补录",
+            "凭据轮换管理",
+            "生命周期规范化",
+            "字段待办拆分",
+            "模型归属核验",
+            "地址字段规范化",
+            "凭据脱敏迁移"
+          ],
+          "n_values": 24
+        },
+        "166": {
+          "attr_name": "server_lifecycle_status",
+          "alias": "生命周期状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "待确认",
+            "运行中",
+            "已停用",
+            "不纳管",
+            "归档候选",
+            "已归档"
+          ],
+          "n_values": 6
+        },
+        "167": {
+          "attr_name": "server_evidence_status",
+          "alias": "证据状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "当前运行态已验证",
+            "历史基线待核对",
+            "归档候选",
+            "明确排除"
+          ],
+          "n_values": 4
+        },
+        "168": {
+          "attr_name": "server_evidence_source",
+          "alias": "证据来源",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "ssh实测",
+            "人工口述",
+            "厂商API",
+            "历史台账回看",
+            "扫描器",
+            "排除说明",
+            "监控面现读",
+            "部署流水线"
+          ],
+          "n_values": 8
+        },
+        "170": {
+          "attr_name": "business_lifecycle_status",
+          "alias": "生命周期状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "待确认",
+            "运行中",
+            "已停用",
+            "不纳管",
+            "归档候选",
+            "已归档"
+          ],
+          "n_values": 6
+        },
+        "171": {
+          "attr_name": "business_evidence_status",
+          "alias": "证据状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "当前运行态已验证",
+            "历史基线待核对",
+            "归档候选",
+            "明确排除"
+          ],
+          "n_values": 4
+        },
+        "172": {
+          "attr_name": "business_evidence_source",
+          "alias": "证据来源",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "ssh实测",
+            "人工口述",
+            "厂商API",
+            "历史台账回看",
+            "扫描器",
+            "排除说明",
+            "监控面现读",
+            "部署流水线"
+          ],
+          "n_values": 8
+        },
+        "174": {
+          "attr_name": "middlewa_lifecycle_status",
+          "alias": "生命周期状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "待确认",
+            "运行中",
+            "已停用",
+            "不纳管",
+            "归档候选",
+            "已归档"
+          ],
+          "n_values": 6
+        },
+        "175": {
+          "attr_name": "middlewa_evidence_status",
+          "alias": "证据状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "当前运行态已验证",
+            "历史基线待核对",
+            "归档候选",
+            "明确排除"
+          ],
+          "n_values": 4
+        },
+        "176": {
+          "attr_name": "middlewa_evidence_source",
+          "alias": "证据来源",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "ssh实测",
+            "人工口述",
+            "厂商API",
+            "历史台账回看",
+            "扫描器",
+            "排除说明",
+            "监控面现读",
+            "部署流水线"
+          ],
+          "n_values": 8
+        },
+        "178": {
+          "attr_name": "network__lifecycle_status",
+          "alias": "生命周期状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "待确认",
+            "运行中",
+            "已停用",
+            "不纳管",
+            "归档候选",
+            "已归档"
+          ],
+          "n_values": 6
+        },
+        "179": {
+          "attr_name": "network__evidence_status",
+          "alias": "证据状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "当前运行态已验证",
+            "历史基线待核对",
+            "归档候选",
+            "明确排除"
+          ],
+          "n_values": 4
+        },
+        "180": {
+          "attr_name": "network__evidence_source",
+          "alias": "证据来源",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "ssh实测",
+            "人工口述",
+            "厂商API",
+            "历史台账回看",
+            "扫描器",
+            "排除说明",
+            "监控面现读",
+            "部署流水线"
+          ],
+          "n_values": 8
+        },
+        "182": {
+          "attr_name": "credenti_lifecycle_status",
+          "alias": "生命周期状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "待确认",
+            "运行中",
+            "已停用",
+            "不纳管",
+            "归档候选",
+            "已归档"
+          ],
+          "n_values": 6
+        },
+        "183": {
+          "attr_name": "credenti_evidence_status",
+          "alias": "证据状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "当前运行态已验证",
+            "历史基线待核对",
+            "归档候选",
+            "明确排除"
+          ],
+          "n_values": 4
+        },
+        "184": {
+          "attr_name": "credenti_evidence_source",
+          "alias": "证据来源",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "ssh实测",
+            "人工口述",
+            "厂商API",
+            "历史台账回看",
+            "扫描器",
+            "排除说明",
+            "监控面现读",
+            "部署流水线"
+          ],
+          "n_values": 8
+        },
+        "186": {
+          "attr_name": "operatio_lifecycle_status",
+          "alias": "生命周期状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "待确认",
+            "运行中",
+            "已停用",
+            "不纳管",
+            "归档候选",
+            "已归档"
+          ],
+          "n_values": 6
+        },
+        "187": {
+          "attr_name": "operatio_evidence_status",
+          "alias": "证据状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "当前运行态已验证",
+            "历史基线待核对",
+            "归档候选",
+            "明确排除"
+          ],
+          "n_values": 4
+        },
+        "188": {
+          "attr_name": "operatio_evidence_source",
+          "alias": "证据来源",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "ssh实测",
+            "人工口述",
+            "厂商API",
+            "历史台账回看",
+            "扫描器",
+            "排除说明",
+            "监控面现读",
+            "部署流水线"
+          ],
+          "n_values": 8
+        },
+        "190": {
+          "attr_name": "data_che_queue_status",
+          "alias": "队列状态",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "待人工确认",
+            "待抽查",
+            "已关闭"
+          ],
+          "n_values": 3
+        },
+        "191": {
+          "attr_name": "data_che_priority",
+          "alias": "优先级",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "P1-关系完整性",
+            "P2-配置与凭据",
+            "P3-历史基线",
+            "P4-已关闭"
+          ],
+          "n_values": 4
+        },
+        "198": {
+          "attr_name": "server_deploy_network",
+          "alias": "部署网络/访问范围",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "内网",
+            "内网/VPN",
+            "VPN",
+            "公网",
+            "待确认",
+            "其他"
+          ],
+          "n_values": 6
+        },
+        "199": {
+          "attr_name": "business_deploy_network",
+          "alias": "部署网络/访问范围",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "内网",
+            "内网/VPN",
+            "VPN",
+            "公网",
+            "待确认",
+            "其他"
+          ],
+          "n_values": 6
+        },
+        "200": {
+          "attr_name": "middlewa_deploy_network",
+          "alias": "部署网络/访问范围",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "内网",
+            "内网/VPN",
+            "VPN",
+            "公网",
+            "待确认",
+            "其他"
+          ],
+          "n_values": 6
+        },
+        "201": {
+          "attr_name": "credenti_deploy_network",
+          "alias": "部署网络/访问范围",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "内网",
+            "内网/VPN",
+            "VPN",
+            "公网",
+            "待确认",
+            "其他"
+          ],
+          "n_values": 6
+        },
+        "202": {
+          "attr_name": "operatio_deploy_network",
+          "alias": "部署网络/访问范围",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 0,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "内网",
+            "内网/VPN",
+            "VPN",
+            "公网",
+            "待确认",
+            "其他"
+          ],
+          "n_values": 6
+        },
+        "204": {
+          "attr_name": "credenti_binding_scope",
+          "alias": "关联作用域",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "服务器",
+            "应用服务",
+            "中间件",
+            "多资源共享",
+            "未关联资源",
+            "待确认"
+          ],
+          "n_values": 6
+        },
+        "205": {
+          "attr_name": "operatio_binding_scope",
+          "alias": "关联作用域",
+          "value_type": "2",
+          "is_choice": 1,
+          "is_index": 1,
+          "kind": "static",
+          "choice_other_binding_json": null,
+          "values": [
+            "服务器",
+            "应用服务",
+            "中间件",
+            "多资源共享",
+            "待确认"
+          ],
+          "n_values": 5
+        }
+      }
+    },
+    "four_piece_set": {
+      "source": "§4.3 L194・§13.8 步4 L386・§16.1 L692・§13.8 L423＋库面 reads/q3.out FOURPIECE_BIND/NOTES_AND_MARKERS・reads/q4.out MARKER_DISTINCT/CHECKEDAT_FORM",
+      "per_type": {
+        "2": {
+          "type_name": "source_document",
+          "bindings": [
+            {
+              "attr_id": 212,
+              "attr_name": "source_d_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "3": {
+          "type_name": "server",
+          "bindings": [
+            {
+              "attr_id": 40,
+              "attr_name": "server_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 41,
+              "attr_name": "server_notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 166,
+              "attr_name": "server_lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 167,
+              "attr_name": "server_evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 168,
+              "attr_name": "server_evidence_source",
+              "alias": "证据来源",
+              "role": "evidence_source",
+              "is_index": 0,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 169,
+              "attr_name": "server_evidence_checked_at",
+              "alias": "最近核验时间",
+              "role": "checked_at",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "4": {
+          "type_name": "business_application",
+          "bindings": [
+            {
+              "attr_id": 61,
+              "attr_name": "business_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 62,
+              "attr_name": "business_notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 170,
+              "attr_name": "business_lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 171,
+              "attr_name": "business_evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 172,
+              "attr_name": "business_evidence_source",
+              "alias": "证据来源",
+              "role": "evidence_source",
+              "is_index": 0,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 173,
+              "attr_name": "business_evidence_checked_at",
+              "alias": "最近核验时间",
+              "role": "checked_at",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "5": {
+          "type_name": "middleware",
+          "bindings": [
+            {
+              "attr_id": 84,
+              "attr_name": "middlewa_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 85,
+              "attr_name": "middlewa_notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 174,
+              "attr_name": "middlewa_lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 175,
+              "attr_name": "middlewa_evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 176,
+              "attr_name": "middlewa_evidence_source",
+              "alias": "证据来源",
+              "role": "evidence_source",
+              "is_index": 0,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 177,
+              "attr_name": "middlewa_evidence_checked_at",
+              "alias": "最近核验时间",
+              "role": "checked_at",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "6": {
+          "type_name": "network_service",
+          "bindings": [
+            {
+              "attr_id": 104,
+              "attr_name": "network__record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 105,
+              "attr_name": "network__notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 178,
+              "attr_name": "network__lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 179,
+              "attr_name": "network__evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 180,
+              "attr_name": "network__evidence_source",
+              "alias": "证据来源",
+              "role": "evidence_source",
+              "is_index": 0,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 181,
+              "attr_name": "network__evidence_checked_at",
+              "alias": "最近核验时间",
+              "role": "checked_at",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "7": {
+          "type_name": "credential",
+          "bindings": [
+            {
+              "attr_id": 123,
+              "attr_name": "credenti_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 124,
+              "attr_name": "credenti_notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 182,
+              "attr_name": "credenti_lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 183,
+              "attr_name": "credenti_evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 184,
+              "attr_name": "credenti_evidence_source",
+              "alias": "证据来源",
+              "role": "evidence_source",
+              "is_index": 0,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 185,
+              "attr_name": "credenti_evidence_checked_at",
+              "alias": "最近核验时间",
+              "role": "checked_at",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "8": {
+          "type_name": "operation_runbook",
+          "bindings": [
+            {
+              "attr_id": 141,
+              "attr_name": "operatio_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 142,
+              "attr_name": "operatio_notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 186,
+              "attr_name": "operatio_lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 187,
+              "attr_name": "operatio_evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 188,
+              "attr_name": "operatio_evidence_source",
+              "alias": "证据来源",
+              "role": "evidence_source",
+              "is_index": 0,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 189,
+              "attr_name": "operatio_evidence_checked_at",
+              "alias": "最近核验时间",
+              "role": "checked_at",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "9": {
+          "type_name": "data_check",
+          "bindings": [
+            {
+              "attr_id": 157,
+              "attr_name": "data_che_notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 211,
+              "attr_name": "data_che_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "10": {
+          "type_name": "monitoring_component",
+          "bindings": [
+            {
+              "attr_id": 84,
+              "attr_name": "middlewa_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 85,
+              "attr_name": "middlewa_notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 174,
+              "attr_name": "middlewa_lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 175,
+              "attr_name": "middlewa_evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 176,
+              "attr_name": "middlewa_evidence_source",
+              "alias": "证据来源",
+              "role": "evidence_source",
+              "is_index": 0,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 177,
+              "attr_name": "middlewa_evidence_checked_at",
+              "alias": "最近核验时间",
+              "role": "checked_at",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        },
+        "11": {
+          "type_name": "business_system",
+          "bindings": [
+            {
+              "attr_id": 170,
+              "attr_name": "business_lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 171,
+              "attr_name": "business_evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            }
+          ]
+        },
+        "12": {
+          "type_name": "runtime_platform",
+          "bindings": [
+            {
+              "attr_id": 84,
+              "attr_name": "middlewa_record_status",
+              "alias": "历史整理标记（非当前状态）",
+              "role": "record_status",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 85,
+              "attr_name": "middlewa_notes",
+              "alias": "备注",
+              "role": "notes",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            },
+            {
+              "attr_id": 174,
+              "attr_name": "middlewa_lifecycle_status",
+              "alias": "生命周期状态",
+              "role": "lifecycle",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 1
+            },
+            {
+              "attr_id": 175,
+              "attr_name": "middlewa_evidence_status",
+              "alias": "证据状态",
+              "role": "evidence_status",
+              "is_index": 1,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 176,
+              "attr_name": "middlewa_evidence_source",
+              "alias": "证据来源",
+              "role": "evidence_source",
+              "is_index": 0,
+              "is_choice": 1,
+              "is_required": 0
+            },
+            {
+              "attr_id": 177,
+              "attr_name": "middlewa_evidence_checked_at",
+              "alias": "最近核验时间",
+              "role": "checked_at",
+              "is_index": 0,
+              "is_choice": 0,
+              "is_required": 0
+            }
+          ]
+        }
+      },
+      "notes_attr_scope": {
+        "attrs": [
+          41,
+          62,
+          85,
+          105,
+          124,
+          142,
+          157
+        ],
+        "types_without_notes_column": [
+          "1 quick_reference",
+          "2 source_document",
+          "11 business_system"
+        ],
+        "source": "§16.1 L692"
+      },
+      "record_status_markers": {
+        "attrs": [
+          40,
+          61,
+          84,
+          104,
+          123,
+          141,
+          211,
+          212
+        ],
+        "gate": "库面 is_choice=0 自由文本（无闸门）",
+        "allowed_words_D66": [
+          "待整理",
+          "已整理",
+          "重复候选",
+          "已合并"
+        ],
+        "doc_six_words_source": "§4.2 L184（书写口径）",
+        "write_gate_policy": {
+          "severity": "warn_only",
+          "reject": false,
+          "decided_by": "主进程裁决 R-A1（2026-11-15）",
+          "rationale": "存量「待摸排」量大＝硬拦会把真写挡成 400；裁决文书记 1,804 格，本快照 c_value_texts 面现读 8 枚标记列合计 1188 格（口径差＝裁决时另含索引表/其后清洗未执行；数字差不影响裁决）",
+          "hard_gate_when": "该列清洗完成后由人工再开（开关在执行侧，本事实源保持 warn_only）",
+          "applies_to": [
+            "*_record_status 八列词面（含文档封闭六词/D-66 四词口径）"
+          ]
+        },
+        "observed_待摸排_cells_c_value_texts": 1188,
+        "observed_distinct_values": {
+          "40": [
+            {
+              "value": "已整理",
+              "n": 95
+            },
+            {
+              "value": "待摸排",
+              "n": 27
+            },
+            {
+              "value": "待确认",
+              "n": 8
+            },
+            {
+              "value": "待整理",
+              "n": 3
+            },
+            {
+              "value": "重复候选",
+              "n": 2
+            },
+            {
+              "value": "参考待确认",
+              "n": 2
+            }
+          ],
+          "61": [
+            {
+              "value": "已整理",
+              "n": 449
+            },
+            {
+              "value": "待摸排",
+              "n": 173
+            },
+            {
+              "value": "重复候选",
+              "n": 70
+            },
+            {
+              "value": "待确认",
+              "n": 15
+            },
+            {
+              "value": "参考待确认",
+              "n": 6
+            },
+            {
+              "value": "待整理",
+              "n": 1
+            }
+          ],
+          "84": [
+            {
+              "value": "已整理",
+              "n": 608
+            },
+            {
+              "value": "待摸排",
+              "n": 117
+            },
+            {
+              "value": "重复候选",
+              "n": 30
+            },
+            {
+              "value": "待确认",
+              "n": 14
+            }
+          ],
+          "104": [
+            {
+              "value": "已整理",
+              "n": 114
+            },
+            {
+              "value": "待摸排",
+              "n": 18
+            },
+            {
+              "value": "重复候选",
+              "n": 4
+            },
+            {
+              "value": "待整理",
+              "n": 1
+            }
+          ],
+          "123": [
+            {
+              "value": "已整理",
+              "n": 518
+            },
+            {
+              "value": "待摸排",
+              "n": 43
+            },
+            {
+              "value": "重复候选",
+              "n": 9
+            },
+            {
+              "value": "已整理｜重复并档：已合并至 CI <num:redacted>",
+              "n": 2
+            },
+            {
+              "value": "已迁移待核对",
+              "n": 2
+            },
+            {
+              "value": "已整理｜重复并档：已合并至 CI <num:redacted>",
+              "n": 1
+            },
+            {
+              "value": "已整理｜重复并档：已合并至 CI <num:redacted>",
+              "n": 1
+            },
+            {
+              "value": "已整理｜重复并档：已合并至 CI <num:redacted>",
+              "n": 1
+            },
+            {
+              "value": "待整理",
+              "n": 1
+            }
+          ],
+          "141": [
+            {
+              "value": "已整理",
+              "n": 312
+            },
+            {
+              "value": "待摸排",
+              "n": 10
+            },
+            {
+              "value": "待整理",
+              "n": 1
+            }
+          ],
+          "211": [
+            {
+              "value": "待摸排",
+              "n": 782
+            },
+            {
+              "value": "已整理",
+              "n": 1
+            }
+          ],
+          "212": [
+            {
+              "value": "待摸排",
+              "n": 18
+            }
+          ]
+        }
+      },
+      "evidence_status_true_closed_attrs": [
+        167,
+        171,
+        175,
+        179,
+        183,
+        187
+      ],
+      "checked_at_form": {
+        "pattern": "YYYY-MM-DD（CHAR_LENGTH=10・一手核验当日・+08:00 换算）",
+        "source": "§13.8 L423・§13.8 L416（R-4b 同日同写）",
+        "observed": [
+          {
+            "attr_id": 169,
+            "cells": 74,
+            "min": "",
+            "max": "2026-11-13"
+          },
+          {
+            "attr_id": 173,
+            "cells": 423,
+            "min": "",
+            "max": "2026-11-15"
+          },
+          {
+            "attr_id": 177,
+            "cells": 601,
+            "min": "",
+            "max": "2026-11-15"
+          },
+          {
+            "attr_id": 181,
+            "cells": 155,
+            "min": "",
+            "max": "2026-11-15"
+          },
+          {
+            "attr_id": 185,
+            "cells": 612,
+            "min": "",
+            "max": "2026-11-15"
+          },
+          {
+            "attr_id": 189,
+            "cells": 323,
+            "min": "",
+            "max": "2026-11-15"
+          }
+        ]
+      }
+    },
+    "field_constraints": {
+      "source": "§6 L212-229（必填口径・纸面）＋库面 reads/q1.out UNIQUE_ATTRS/RECHECK・q2.out REQUIRED・q3.out INDEX128_ATTRS・q5.out MAXLEN_128",
+      "required_by_type": {
+        "1": [
+          {
+            "attr_id": 3,
+            "attr_name": "quick_re_source_key",
+            "alias": "导入唯一键"
+          }
+        ],
+        "2": [
+          {
+            "attr_id": 18,
+            "attr_name": "source_d_source_key",
+            "alias": "导入唯一键"
+          }
+        ],
+        "3": [
+          {
+            "attr_id": 23,
+            "attr_name": "server_environment",
+            "alias": "环境"
+          },
+          {
+            "attr_id": 24,
+            "attr_name": "server_server_name",
+            "alias": "服务器名称"
+          },
+          {
+            "attr_id": 25,
+            "attr_name": "server_resource_id",
+            "alias": "资源编号"
+          },
+          {
+            "attr_id": 34,
+            "attr_name": "server_os",
+            "alias": "操作系统"
+          },
+          {
+            "attr_id": 42,
+            "attr_name": "server_source_key",
+            "alias": "导入唯一键"
+          },
+          {
+            "attr_id": 166,
+            "attr_name": "server_lifecycle_status",
+            "alias": "生命周期状态"
+          }
+        ],
+        "4": [
+          {
+            "attr_id": 47,
+            "attr_name": "business_environment",
+            "alias": "环境"
+          },
+          {
+            "attr_id": 48,
+            "attr_name": "business_server_ref",
+            "alias": "所在服务器"
+          },
+          {
+            "attr_id": 49,
+            "attr_name": "business_resource_id",
+            "alias": "资源编号"
+          },
+          {
+            "attr_id": 52,
+            "attr_name": "business_application_name",
+            "alias": "应用名称"
+          },
+          {
+            "attr_id": 63,
+            "attr_name": "business_source_key",
+            "alias": "导入唯一键"
+          },
+          {
+            "attr_id": 170,
+            "attr_name": "business_lifecycle_status",
+            "alias": "生命周期状态"
+          }
+        ],
+        "5": [
+          {
+            "attr_id": 68,
+            "attr_name": "middlewa_environment",
+            "alias": "环境"
+          },
+          {
+            "attr_id": 69,
+            "attr_name": "middlewa_server_ref",
+            "alias": "所在服务器/实例"
+          },
+          {
+            "attr_id": 70,
+            "attr_name": "middlewa_resource_id",
+            "alias": "资源编号"
+          },
+          {
+            "attr_id": 86,
+            "attr_name": "middlewa_source_key",
+            "alias": "导入唯一键"
+          },
+          {
+            "attr_id": 174,
+            "attr_name": "middlewa_lifecycle_status",
+            "alias": "生命周期状态"
+          }
+        ],
+        "6": [
+          {
+            "attr_id": 90,
+            "attr_name": "network__resource_name",
+            "alias": "资源名称"
+          },
+          {
+            "attr_id": 91,
+            "attr_name": "network__resource_id",
+            "alias": "资源编号"
+          },
+          {
+            "attr_id": 92,
+            "attr_name": "network__category",
+            "alias": "资源类别"
+          },
+          {
+            "attr_id": 93,
+            "attr_name": "network__network_zone",
+            "alias": "网络区域"
+          },
+          {
+            "attr_id": 106,
+            "attr_name": "network__source_key",
+            "alias": "导入唯一键"
+          },
+          {
+            "attr_id": 178,
+            "attr_name": "network__lifecycle_status",
+            "alias": "生命周期状态"
+          }
+        ],
+        "7": [
+          {
+            "attr_id": 111,
+            "attr_name": "credenti_environment",
+            "alias": "环境"
+          },
+          {
+            "attr_id": 113,
+            "attr_name": "credenti_resource_id",
+            "alias": "资源编号"
+          },
+          {
+            "attr_id": 114,
+            "attr_name": "credenti_config_type",
+            "alias": "配置类型"
+          },
+          {
+            "attr_id": 115,
+            "attr_name": "credenti_key_id",
+            "alias": "配置名称/Key ID"
+          },
+          {
+            "attr_id": 125,
+            "attr_name": "credenti_source_key",
+            "alias": "导入唯一键"
+          },
+          {
+            "attr_id": 182,
+            "attr_name": "credenti_lifecycle_status",
+            "alias": "生命周期状态"
+          },
+          {
+            "attr_id": 204,
+            "attr_name": "credenti_binding_scope",
+            "alias": "关联作用域"
+          }
+        ],
+        "8": [
+          {
+            "attr_id": 130,
+            "attr_name": "operatio_environment",
+            "alias": "环境"
+          },
+          {
+            "attr_id": 131,
+            "attr_name": "operatio_resource_ref",
+            "alias": "资源/组件"
+          },
+          {
+            "attr_id": 132,
+            "attr_name": "operatio_resource_id",
+            "alias": "资源编号"
+          },
+          {
+            "attr_id": 133,
+            "attr_name": "operatio_scenario",
+            "alias": "操作场景"
+          },
+          {
+            "attr_id": 143,
+            "attr_name": "operatio_source_key",
+            "alias": "导入唯一键"
+          },
+          {
+            "attr_id": 186,
+            "attr_name": "operatio_lifecycle_status",
+            "alias": "生命周期状态"
+          },
+          {
+            "attr_id": 205,
+            "attr_name": "operatio_binding_scope",
+            "alias": "关联作用域"
+          }
+        ],
+        "9": [
+          {
+            "attr_id": 147,
+            "attr_name": "data_che_check_id",
+            "alias": "核对编号"
+          },
+          {
+            "attr_id": 153,
+            "attr_name": "data_che_check_type",
+            "alias": "核对类型"
+          },
+          {
+            "attr_id": 154,
+            "attr_name": "data_che_result",
+            "alias": "结果"
+          },
+          {
+            "attr_id": 158,
+            "attr_name": "data_che_source_key",
+            "alias": "导入唯一键"
+          },
+          {
+            "attr_id": 190,
+            "attr_name": "data_che_queue_status",
+            "alias": "队列状态"
+          },
+          {
+            "attr_id": 191,
+            "attr_name": "data_che_priority",
+            "alias": "优先级"
+          }
+        ],
+        "10": [
+          {
+            "attr_id": 68,
+            "attr_name": "middlewa_environment",
+            "alias": "环境"
+          },
+          {
+            "attr_id": 70,
+            "attr_name": "middlewa_resource_id",
+            "alias": "资源编号"
+          },
+          {
+            "attr_id": 72,
+            "attr_name": "middlewa_component_name",
+            "alias": "组件名称"
+          },
+          {
+            "attr_id": 86,
+            "attr_name": "middlewa_source_key",
+            "alias": "导入唯一键"
+          },
+          {
+            "attr_id": 174,
+            "attr_name": "middlewa_lifecycle_status",
+            "alias": "生命周期状态"
+          }
+        ],
+        "11": [
+          {
+            "attr_id": 170,
+            "attr_name": "business_lifecycle_status",
+            "alias": "生命周期状态"
+          },
+          {
+            "attr_id": 206,
+            "attr_name": "system_name",
+            "alias": "系统/项目名称"
+          }
+        ],
+        "12": [
+          {
+            "attr_id": 68,
+            "attr_name": "middlewa_environment",
+            "alias": "环境"
+          },
+          {
+            "attr_id": 69,
+            "attr_name": "middlewa_server_ref",
+            "alias": "所在服务器/实例"
+          },
+          {
+            "attr_id": 70,
+            "attr_name": "middlewa_resource_id",
+            "alias": "资源编号"
+          },
+          {
+            "attr_id": 174,
+            "attr_name": "middlewa_lifecycle_status",
+            "alias": "生命周期状态"
+          },
+          {
+            "attr_id": 208,
+            "attr_name": "runtime_source_key",
+            "alias": "运行平台来源键"
+          }
+        ]
+      },
+      "unique_attrs": {
+        "3": "quick_re_source_key",
+        "25": "server_resource_id",
+        "42": "server_source_key",
+        "49": "business_resource_id",
+        "63": "business_source_key",
+        "70": "middlewa_resource_id",
+        "86": "middlewa_source_key",
+        "91": "network__resource_id",
+        "113": "credenti_resource_id",
+        "125": "credenti_source_key",
+        "132": "operatio_resource_id",
+        "147": "data_che_check_id",
+        "158": "data_che_source_key",
+        "206": "system_name",
+        "208": "runtime_source_key"
+      },
+      "is_index_1_text_attrs": [
+        {
+          "attr_id": 1,
+          "attr_name": "quick_re_title",
+          "alias": "快速查询与联查"
+        },
+        {
+          "attr_id": 3,
+          "attr_name": "quick_re_source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 4,
+          "attr_name": "quick_re_source_original",
+          "alias": "原始资源编号"
+        },
+        {
+          "attr_id": 7,
+          "attr_name": "source_d_source_id",
+          "alias": "来源编号"
+        },
+        {
+          "attr_id": 8,
+          "attr_name": "source_d_relative_path",
+          "alias": "相对路径"
+        },
+        {
+          "attr_id": 18,
+          "attr_name": "source_d_source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 19,
+          "attr_name": "source_d_source_original",
+          "alias": "原始资源编号"
+        },
+        {
+          "attr_id": 22,
+          "attr_name": "server_project",
+          "alias": "项目/系统"
+        },
+        {
+          "attr_id": 23,
+          "attr_name": "server_environment",
+          "alias": "环境"
+        },
+        {
+          "attr_id": 24,
+          "attr_name": "server_server_name",
+          "alias": "服务器名称"
+        },
+        {
+          "attr_id": 25,
+          "attr_name": "server_resource_id",
+          "alias": "资源编号"
+        },
+        {
+          "attr_id": 27,
+          "attr_name": "server_private_ip",
+          "alias": "内网地址"
+        },
+        {
+          "attr_id": 28,
+          "attr_name": "server_public_ip",
+          "alias": "公网地址"
+        },
+        {
+          "attr_id": 34,
+          "attr_name": "server_os",
+          "alias": "操作系统"
+        },
+        {
+          "attr_id": 42,
+          "attr_name": "server_source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 46,
+          "attr_name": "business_project",
+          "alias": "项目/系统"
+        },
+        {
+          "attr_id": 47,
+          "attr_name": "business_environment",
+          "alias": "环境"
+        },
+        {
+          "attr_id": 48,
+          "attr_name": "business_server_ref",
+          "alias": "所在服务器"
+        },
+        {
+          "attr_id": 49,
+          "attr_name": "business_resource_id",
+          "alias": "资源编号"
+        },
+        {
+          "attr_id": 50,
+          "attr_name": "business_private_ip",
+          "alias": "内网地址"
+        },
+        {
+          "attr_id": 52,
+          "attr_name": "business_application_name",
+          "alias": "应用名称"
+        },
+        {
+          "attr_id": 54,
+          "attr_name": "business_port",
+          "alias": "端口"
+        },
+        {
+          "attr_id": 63,
+          "attr_name": "business_source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 67,
+          "attr_name": "middlewa_project",
+          "alias": "项目/系统"
+        },
+        {
+          "attr_id": 68,
+          "attr_name": "middlewa_environment",
+          "alias": "环境"
+        },
+        {
+          "attr_id": 69,
+          "attr_name": "middlewa_server_ref",
+          "alias": "所在服务器/实例"
+        },
+        {
+          "attr_id": 70,
+          "attr_name": "middlewa_resource_id",
+          "alias": "资源编号"
+        },
+        {
+          "attr_id": 71,
+          "attr_name": "middlewa_asset_category",
+          "alias": "资产类别"
+        },
+        {
+          "attr_id": 72,
+          "attr_name": "middlewa_component_name",
+          "alias": "组件名称"
+        },
+        {
+          "attr_id": 74,
+          "attr_name": "middlewa_private_ip",
+          "alias": "内网地址"
+        },
+        {
+          "attr_id": 76,
+          "attr_name": "middlewa_port",
+          "alias": "端口"
+        },
+        {
+          "attr_id": 86,
+          "attr_name": "middlewa_source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 90,
+          "attr_name": "network__resource_name",
+          "alias": "资源名称"
+        },
+        {
+          "attr_id": 91,
+          "attr_name": "network__resource_id",
+          "alias": "资源编号"
+        },
+        {
+          "attr_id": 92,
+          "attr_name": "network__category",
+          "alias": "资源类别"
+        },
+        {
+          "attr_id": 93,
+          "attr_name": "network__network_zone",
+          "alias": "网络区域"
+        },
+        {
+          "attr_id": 94,
+          "attr_name": "network__private_address",
+          "alias": "内网地址"
+        },
+        {
+          "attr_id": 96,
+          "attr_name": "network__protocol_port",
+          "alias": "协议/端口"
+        },
+        {
+          "attr_id": 106,
+          "attr_name": "network__source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 110,
+          "attr_name": "credenti_project",
+          "alias": "项目/系统"
+        },
+        {
+          "attr_id": 111,
+          "attr_name": "credenti_environment",
+          "alias": "环境"
+        },
+        {
+          "attr_id": 112,
+          "attr_name": "credenti_resource_ref",
+          "alias": "资源/组件"
+        },
+        {
+          "attr_id": 113,
+          "attr_name": "credenti_resource_id",
+          "alias": "资源编号"
+        },
+        {
+          "attr_id": 114,
+          "attr_name": "credenti_config_type",
+          "alias": "配置类型"
+        },
+        {
+          "attr_id": 115,
+          "attr_name": "credenti_key_id",
+          "alias": "配置名称/Key ID"
+        },
+        {
+          "attr_id": 118,
+          "attr_name": "credenti_purpose",
+          "alias": "用途"
+        },
+        {
+          "attr_id": 125,
+          "attr_name": "credenti_source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 129,
+          "attr_name": "operatio_project",
+          "alias": "项目/系统"
+        },
+        {
+          "attr_id": 130,
+          "attr_name": "operatio_environment",
+          "alias": "环境"
+        },
+        {
+          "attr_id": 131,
+          "attr_name": "operatio_resource_ref",
+          "alias": "资源/组件"
+        },
+        {
+          "attr_id": 132,
+          "attr_name": "operatio_resource_id",
+          "alias": "资源编号"
+        },
+        {
+          "attr_id": 133,
+          "attr_name": "operatio_scenario",
+          "alias": "操作场景"
+        },
+        {
+          "attr_id": 143,
+          "attr_name": "operatio_source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 147,
+          "attr_name": "data_che_check_id",
+          "alias": "核对编号"
+        },
+        {
+          "attr_id": 151,
+          "attr_name": "data_che_target_sheet",
+          "alias": "目标Sheet"
+        },
+        {
+          "attr_id": 153,
+          "attr_name": "data_che_check_type",
+          "alias": "核对类型"
+        },
+        {
+          "attr_id": 154,
+          "attr_name": "data_che_result",
+          "alias": "结果"
+        },
+        {
+          "attr_id": 158,
+          "attr_name": "data_che_source_key",
+          "alias": "导入唯一键"
+        },
+        {
+          "attr_id": 164,
+          "attr_name": "middlewa_search_keywords",
+          "alias": "搜索关键词"
+        },
+        {
+          "attr_id": 165,
+          "attr_name": "credenti_search_keywords",
+          "alias": "搜索关键词"
+        },
+        {
+          "attr_id": 166,
+          "attr_name": "server_lifecycle_status",
+          "alias": "生命周期状态"
+        },
+        {
+          "attr_id": 167,
+          "attr_name": "server_evidence_status",
+          "alias": "证据状态"
+        },
+        {
+          "attr_id": 170,
+          "attr_name": "business_lifecycle_status",
+          "alias": "生命周期状态"
+        },
+        {
+          "attr_id": 171,
+          "attr_name": "business_evidence_status",
+          "alias": "证据状态"
+        },
+        {
+          "attr_id": 174,
+          "attr_name": "middlewa_lifecycle_status",
+          "alias": "生命周期状态"
+        },
+        {
+          "attr_id": 175,
+          "attr_name": "middlewa_evidence_status",
+          "alias": "证据状态"
+        },
+        {
+          "attr_id": 178,
+          "attr_name": "network__lifecycle_status",
+          "alias": "生命周期状态"
+        },
+        {
+          "attr_id": 179,
+          "attr_name": "network__evidence_status",
+          "alias": "证据状态"
+        },
+        {
+          "attr_id": 182,
+          "attr_name": "credenti_lifecycle_status",
+          "alias": "生命周期状态"
+        },
+        {
+          "attr_id": 183,
+          "attr_name": "credenti_evidence_status",
+          "alias": "证据状态"
+        },
+        {
+          "attr_id": 186,
+          "attr_name": "operatio_lifecycle_status",
+          "alias": "生命周期状态"
+        },
+        {
+          "attr_id": 187,
+          "attr_name": "operatio_evidence_status",
+          "alias": "证据状态"
+        },
+        {
+          "attr_id": 190,
+          "attr_name": "data_che_queue_status",
+          "alias": "队列状态"
+        },
+        {
+          "attr_id": 191,
+          "attr_name": "data_che_priority",
+          "alias": "优先级"
+        },
+        {
+          "attr_id": 204,
+          "attr_name": "credenti_binding_scope",
+          "alias": "关联作用域"
+        },
+        {
+          "attr_id": 205,
+          "attr_name": "operatio_binding_scope",
+          "alias": "关联作用域"
+        },
+        {
+          "attr_id": 206,
+          "attr_name": "system_name",
+          "alias": "系统/项目名称"
+        },
+        {
+          "attr_id": 208,
+          "attr_name": "runtime_source_key",
+          "alias": "运行平台来源键"
+        },
+        {
+          "attr_id": 209,
+          "attr_name": "runtime_original_ci_id",
+          "alias": "原中间件CI编号"
+        },
+        {
+          "attr_id": 210,
+          "attr_name": "runtime_original_source_key",
+          "alias": "原中间件来源键"
+        }
+      ],
+      "index128_gate": "is_index=1 文本落 c_value_index_texts.value varchar(128) ⇒ 逐格断言≤128；长说明进备注（§13.8 L392）",
+      "observed_max_len_by_keyattr": {
+        "3": 16,
+        "18": 7,
+        "25": 8,
+        "42": 29,
+        "49": 50,
+        "63": 50,
+        "70": 50,
+        "86": 53,
+        "91": 8,
+        "106": 60,
+        "113": 8,
+        "125": 42,
+        "132": 8,
+        "143": 43,
+        "147": 8,
+        "158": 70,
+        "206": 19,
+        "208": 39
+      },
+      "db_recheck": {
+        "25": {
+          "attr_name": "server_resource_id",
+          "re_check": "^SRV-[0-9]{4}$"
+        },
+        "132": {
+          "attr_name": "operatio_resource_id",
+          "re_check": "^OPS-[0-9]{4}$"
+        }
+      },
+      "attr_flags_live_read_face": {
+        "coverage_note": "＝reads/q3.sql NOTES_AND_MARKERS 的 IN 清单现读面（备注7＋标记8＋checked_at6＋attr135/136/203），⛔ 外推到未现读 attr 号；166—189 段标志见 four_piece_set.per_type[*].bindings",
+        "attrs": {
+          "40": {
+            "attr_name": "server_record_status",
+            "alias": "历史整理标记（非当前状态）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "41": {
+            "attr_name": "server_notes",
+            "alias": "备注",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "61": {
+            "attr_name": "business_record_status",
+            "alias": "历史整理标记（非当前状态）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "62": {
+            "attr_name": "business_notes",
+            "alias": "备注",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "84": {
+            "attr_name": "middlewa_record_status",
+            "alias": "历史整理标记（非当前状态）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "85": {
+            "attr_name": "middlewa_notes",
+            "alias": "备注",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "104": {
+            "attr_name": "network__record_status",
+            "alias": "历史整理标记（非当前状态）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "105": {
+            "attr_name": "network__notes",
+            "alias": "备注",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "123": {
+            "attr_name": "credenti_record_status",
+            "alias": "历史整理标记（非当前状态）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "124": {
+            "attr_name": "credenti_notes",
+            "alias": "备注",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "135": {
+            "attr_name": "operatio_commands",
+            "alias": "操作步骤/命令",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "136": {
+            "attr_name": "operatio_verification",
+            "alias": "验证方式",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "141": {
+            "attr_name": "operatio_record_status",
+            "alias": "历史整理标记（非当前状态）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "142": {
+            "attr_name": "operatio_notes",
+            "alias": "备注",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "157": {
+            "attr_name": "data_che_notes",
+            "alias": "备注",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "169": {
+            "attr_name": "server_evidence_checked_at",
+            "alias": "最近核验时间",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "173": {
+            "attr_name": "business_evidence_checked_at",
+            "alias": "最近核验时间",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "177": {
+            "attr_name": "middlewa_evidence_checked_at",
+            "alias": "最近核验时间",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "181": {
+            "attr_name": "network__evidence_checked_at",
+            "alias": "最近核验时间",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "185": {
+            "attr_name": "credenti_evidence_checked_at",
+            "alias": "最近核验时间",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "189": {
+            "attr_name": "operatio_evidence_checked_at",
+            "alias": "最近核验时间",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "203": {
+            "attr_name": "credenti_original_project",
+            "alias": "原始项目/系统（待治理）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "211": {
+            "attr_name": "data_che_record_status",
+            "alias": "历史整理标记（非当前状态）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          },
+          "212": {
+            "attr_name": "source_d_record_status",
+            "alias": "历史整理标记（非当前状态）",
+            "value_type": "2",
+            "is_choice": 0,
+            "is_index": 0,
+            "is_unique": 0
+          }
+        }
+      }
+    },
+    "layer_order_R_C9": {
+      "sequence": [
+        "business_system(项目)",
+        "server(服务器)",
+        "应用/中间件/程序",
+        "credential(ACC)",
+        "operation_runbook(操作台账)"
+      ],
+      "rule": "上一级没有在册卡 ⇒ 下一级 ⛔ 先写；引用列按 §13.6 快车道用占位，⛔ 编造编号",
+      "source": "§13.12 L476（R-C9）・§13.8 步5 L387（D-34 一层一批 Y1—Y7）・§13.6 L343",
+      "one_layer_per_batch_exception": "R-4 备注归位纯机械批 ≤200 枪（§13.8 L415・L436），⛔ 外推",
+      "edge_order_by_constraint": {
+        "'0'/'1' (1-N)": "先删后补 X→E，瞬时窗口照实记",
+        "'2' (M-N)": "先补后删 E→X，撤旧边前回读新边在位",
+        "source": "§13.8 步5 L387",
+        "constraint_column_reality": "constraint 在 c_ci_type_relations（q4 现读）；c_relation_types 只有 id/name（q3 坏腿教训）"
+      },
+      "merged_card_ban": "重复候选/已归档 的让位卡 ⛔ 作新边子端（§13.8 L387・§3.5 L151）"
+    },
+    "dedup_three_checks": {
+      "R-C2": [
+        "attr 25 检索",
+        "名称逐字（⛔ 模糊匹配・⛔ 名称兜底）",
+        "同行内网 IP／VPC 一致"
+      ],
+      "R-C2_fail_action": "查不齐 ⇒ 挂「重复候选」交回，⛔ 就地合并",
+      "R-C2_source": "§13.12 L469",
+      "D-119_hard_gate": [
+        "端口值面＝该监听端口在库哪几格出现",
+        "机器地址面＝内网地址与机器编号挂在谁身上",
+        "组件名面＝容器名/进程名/组件中文名逐字检索"
+      ],
+      "D-119_rule": "三把尺各自查空才准写「无」；未齐 ⇒ ⛔ 发车（§13.8 L425）",
+      "ip_join": {
+        "doc_attrs": [
+          27,
+          28,
+          50,
+          74
+        ],
+        "doc_source": "§13.8 L399",
+        "actual_private_ip_attrs_db_read": [
+          27,
+          50,
+          74,
+          94
+        ],
+        "rule": "两张值表(c_value_texts+c_value_index_texts)＋监控面 instance 必须都查过",
+        "public_ip_attrs_indexed_read": [
+          28
+        ]
+      },
+      "port_join": "端口类证据必并查 §13.7 NAT 公网端口映射与在册内网端口（§13.8 L400）；⛔ 「值表查无」当「端口未占用」",
+      "container_name_like": "只认身份格（resource_id/component_name/config_path），备注互指只记 INFO（§13.8 L398）",
+      "cross_machine_downgrade": "命中同 type 存活卡后再读其 *server_ref，主机不同 ⇒ INFO 不判重（§13.8 L398）",
+      "source": "§13.12 L469・§13.8 L398-400・§13.8 L425"
+    },
+    "evidence_ttl_days": {
+      "server": 30,
+      "business_application": 60,
+      "middleware": 90,
+      "credential": 90,
+      "runbook": 90,
+      "monitoring": 90,
+      "runtime": 90,
+      "network_service": 180,
+      "source_document": 180,
+      "overdue_action": "只把 *_evidence_status 降 历史基线待核对＋进漂移报告，不删不判错",
+      "source": "§5.3 L210"
+    },
+    "pending_confirmation": {
+      "meaning": "待确认＝占位符不是值",
+      "allowed": "临时占位＋同写 *_evidence_status=历史基线待核对＋*_notes 写明卡在谁/缺什么",
+      "banned": [
+        "必填字段挂超 14 天（超期漂移报告派单）",
+        "拿待确认表达没整理/没摸排（那是 record_status 六词的活）"
+      ],
+      "D-48": "文本引用列唯一判据＝现值指不到在册记录 ⇒ 只准 待摸排；⛔ 待整理/待确认顶替、⛔ 编造靶卡实名",
+      "source": "§4.1 L173-175"
+    },
+    "public_ip_column": {
+      "attrs": [
+        28,
+        51,
+        75,
+        95
+      ],
+      "four_value_classes": [
+        "真公网 IP／域名",
+        "无公网地址",
+        "出口正形 公网 <IP>[:<端口>] NAT 映射到内网 <IP>:<端口>（v2.78 无箭头在册正形）",
+        "待摸排（＝整理态非核准结论）"
+      ],
+      "bans": [
+        "⛔ 中文备注",
+        "⛔ 单字 无",
+        "⛔ 空着",
+        "⛔ 编造端口",
+        "⛔ 为出口另建 CI",
+        "⛔ 裸 EIP 入库（R-C3）"
+      ],
+      "anchor_rule": "域名与IP并存 ⇒ 记域名侧、IP 逐字进 notes 痕（§13.7 L364）",
+      "attr29_two_port_form": "attr 29 正形＝<宿主真口>（真口）NAT 前置 <公网IP>:<前端口>（v2.77 两口并记；直绑EIP且两口同值者保持裸口）",
+      "source": "§13.7 L361-374"
+    },
+    "import_key_observed": {
+      "source": "reads/q5.out KEYFORM_*/MANUAL2_63・reads/q4.out SOURCEKEY_SAMPLES（现读）",
+      "prefix_distribution_by_attr": {
+        "63": {
+          "APP": 582,
+          "MANUAL": 70,
+          "EXT": 38,
+          "SERVER": 15,
+          "SRV": 9
+        },
+        "106": {
+          "SERVER": 105,
+          "MANUAL": 30,
+          "NET": 20
+        },
+        "143": {
+          "OPS": 233,
+          "MANUAL": 76,
+          "SRV": 13,
+          "DEPLOY": 1
+        },
+        "42": {
+          "SRV": 128,
+          "MANUAL": 6,
+          "manual:<ip:redacted:01>:20261013": 1,
+          "manual:<ip:redacted:02>:20261014": 1,
+          "manual:<ip:redacted:03>:20261013": 1
+        },
+        "125": {
+          "ACC": 441,
+          "EXT": 167,
+          "governance": 10,
+          "MANUAL": 5
+        },
+        "86": {
+          "SERVER": 279,
+          "SVC": 270,
+          "MANUAL": 70,
+          "EXT": 8,
+          "SRV": 5,
+          "manual:<ip:redacted:04>/archery": 3,
+          "manual:<ip:redacted:05>/new": 3,
+          "manual:<ip:redacted:06>/jms": 2,
+          "manual:<ip:redacted:07>/rds": 2,
+          "manual:<ip:redacted:08>/vmware_exporter": 2,
+          "manual:<ip:redacted:09>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:10>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:11>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:12>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:13>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:14>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:15>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:16>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:17>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:18>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:19>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:20>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:21>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:22>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:23>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:24>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:25>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:26>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:27>/alertmanager:20261023": 1,
+          "manual:<ip:redacted:28>/archery:20261013": 1,
+          "manual:<ip:redacted:29>/blackbox_exporter:20261024": 1,
+          "manual:<ip:redacted:30>/cadvisor:20261028": 1,
+          "manual:<ip:redacted:31>/goinception:20261013": 1,
+          "manual:<ip:redacted:32>/grafana:20261023": 1,
+          "manual:<ip:redacted:33>/harbor": 1,
+          "manual:<ip:redacted:34>/jumpserver:20261013": 1,
+          "manual:<ip:redacted:35>/loki:20261028": 1,
+          "manual:<ip:redacted:36>/nginx": 1,
+          "manual:<ip:redacted:37>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:38>/one": 1,
+          "manual:<ip:redacted:39>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:40>/prometheus:20261023": 1,
+          "manual:<ip:redacted:41>/webhook": 1,
+          "manual:<ip:redacted:42>/node_exporter:20261103": 1,
+          "manual:<ip:redacted:43>/process_exporter:20261103": 1,
+          "manual:<ip:redacted:44>/node_exporter:20261103": 1,
+          "manual:<ip:redacted:45>/process_exporter:20261103": 1,
+          "manual:<ip:redacted:46>/node_exporter:20261103": 1,
+          "manual:<ip:redacted:47>/process_exporter:20261103": 1,
+          "manual:<ip:redacted:48>/node_exporter:20261103": 1,
+          "manual:<ip:redacted:49>/process_exporter:20261103": 1,
+          "manual:<ip:redacted:50>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:51>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:52>/cadvisor:20261028": 1,
+          "manual:<ip:redacted:53>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:54>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:55>/vnstat_exporter:20261028": 1,
+          "manual:<ip:redacted:56>/cadvisor:20261028": 1,
+          "manual:<ip:redacted:57>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:58>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:59>/vnstat_exporter:20261028": 1,
+          "manual:<ip:redacted:60>/archery": 1,
+          "manual:<ip:redacted:61>/harbor_exporter:20261013": 1,
+          "manual:<ip:redacted:62>/jms": 1,
+          "manual:<ip:redacted:63>/newapi_metrics_exporter:20261013": 1,
+          "manual:<ip:redacted:64>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:65>/process_exporter:20261013": 1,
+          "manual:<ip:redacted:66>:9182:20261014": 1,
+          "manual:<ip:redacted:67>/cadvisor:20261013": 1,
+          "manual:<ip:redacted:68>/higress": 1,
+          "manual:<ip:redacted:69>/mysqld_exporter:20261028": 1,
+          "manual:<ip:redacted:70>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:71>/process_exporter:20261013": 1,
+          "manual:<ip:redacted:72>/promtail:20261028": 1,
+          "manual:<ip:redacted:73>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:74>/process_exporter:20261013": 1,
+          "manual:<ip:redacted:75>/cadvisor:20261013": 1,
+          "manual:<ip:redacted:76>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:77>/process_exporter:20261013": 1,
+          "manual:<ip:redacted:78>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:79>/nvidia_gpu_exporter:20261013": 1,
+          "manual:<ip:redacted:80>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:81>/cadvisor:20261013": 1,
+          "manual:<ip:redacted:82>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:83>/cadvisor:20261013": 1,
+          "manual:<ip:redacted:84>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:85>/process_exporter:20261013": 1,
+          "manual:<ip:redacted:86>/cadvisor:20261028": 1,
+          "manual:<ip:redacted:87>/node_exporter:20261028": 1,
+          "manual:<ip:redacted:88>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:89>/nvidia_gpu_exporter:20261028": 1,
+          "manual:<ip:redacted:90>/vllm:20261028": 1,
+          "manual:<ip:redacted:91>/cadvisor:20261013": 1,
+          "manual:<ip:redacted:92>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:93>/nvidia_gpu_exporter:20261013": 1,
+          "manual:<ip:redacted:94>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:95>/higress": 1,
+          "manual:<ip:redacted:96>/jvm": 1,
+          "manual:<ip:redacted:97>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:98>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:99>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:100>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:101>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:102>/nvidia_gpu_exporter:20261013": 1,
+          "manual:<ip:redacted:103>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:104>/cadvisor:20261013": 1,
+          "manual:<ip:redacted:105>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:106>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:107>/cadvisor:20261013": 1,
+          "manual:<ip:redacted:108>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:109>/process_exporter:20261013": 1,
+          "manual:<ip:redacted:110>/cadvisor:20261013": 1,
+          "manual:<ip:redacted:111>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:112>/process_exporter:20261013": 1,
+          "manual:<ip:redacted:113>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:114>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:115>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:116>/process_exporter:20261028": 1,
+          "manual:<ip:redacted:117>/node_exporter:20261013": 1,
+          "manual:<ip:redacted:118>/nvidia_gpu_exporter:20261013": 1,
+          "manual:<ip:redacted:119>/process_exporter:20261013": 1,
+          "manual:<ip:redacted:120>/smartctl_exporter:20261013": 1
+        },
+        "158": {
+          "governance:credential": 143,
+          "EXT": 139,
+          "BUSINESS": 133,
+          "RELATION": 122,
+          "07": 83,
+          "MIDDLEWARE": 43,
+          "DQ": 33,
+          "CHECK": 29,
+          "SENSITIVE": 24,
+          "ADDRESS": 17,
+          "CI": 9,
+          "DUPLICATE": 3,
+          "SERVER": 3,
+          "TRELLIS": 2
+        }
+      },
+      "manual_second_segment_63": {
+        "APP": 70
+      },
+      "source_counts": {
+        "3": 10,
+        "18": 18,
+        "42": 137,
+        "63": 714,
+        "86": 756,
+        "106": 155,
+        "125": 623,
+        "143": 323,
+        "158": 783,
+        "208": 13
+      }
+    },
+    "other_rules": {
+      "R-C1_carrier_column": "承载列只准写 SRV-00xx；纸面别名只进 attr 25 搜索关键词（§13.12 L468）",
+      "R-C4_no_state_word_copy": "三态词只准由核准动作替换，⛔ 由另一处三态词替换（§13.12 L471）",
+      "R-C5_append_not_overwrite": "备注一律拼接不覆盖；粗写法⛔覆盖细值＝以库为准（§13.12 L472）",
+      "R-C11_only_in": "失效 ⇒ 改生命周期/证据状态＋备注留痕，⛔ 删行 ⛔ 释放号（§13.12 L478）",
+      "merge_survivor": "重复卡合并＝幸存卡逐格并值、让位卡只改状态（已归档＋重复候选＋让位痕），⛔ 删行（D-41/D-32・§13.8 L387）",
+      "null_is_physical_delete": "payload value=null＝物理硬删值行（违 D-32）；清空一律写空字符串（§13.8 L407）",
+      "index128_gate": "is_index=1 文本落 c_value_index_texts.value varchar(128) ⇒ 逐格断言≤128；长说明进备注（§13.8 L392）",
+      "union_readback_pitfall": "is_index=1 且两表并存时 UNION 回显取旧值 ⇒ 回读一律 SHA2 现读权威表（§13.8 L408）",
+      "post_ci_quirks": "POST /ci：no_attribute_policy 被视图读走但不 pop ⇒ ⛔ 传；relations URL 只认两个数字 id（§13.8 L383）",
+      "enum_order_iron_rule": "先归一词表（写值）→再翻 is_choice（锁格式）；反过来＝存量编辑全 400（§4.2 L189）",
+      "source": "§13.12 L468-478・§13.8 L383-415・§4.2 L189"
+    },
+    "ci_types": {
+      "source": "reads/q1.out TYPES（c_ci_types 现读）",
+      "types": {
+        "1": {
+          "id": 1,
+          "name": "quick_reference",
+          "alias": "快速查询",
+          "enabled": 0,
+          "unique_attr_id": 3,
+          "unique_attr_name": "quick_re_source_key"
+        },
+        "2": {
+          "id": 2,
+          "name": "source_document",
+          "alias": "来源与说明",
+          "enabled": 0,
+          "unique_attr_id": 18,
+          "unique_attr_name": "source_d_source_key"
+        },
+        "3": {
+          "id": 3,
+          "name": "server",
+          "alias": "服务器",
+          "enabled": 1,
+          "unique_attr_id": 25,
+          "unique_attr_name": "server_resource_id"
+        },
+        "4": {
+          "id": 4,
+          "name": "business_application",
+          "alias": "业务应用",
+          "enabled": 1,
+          "unique_attr_id": 49,
+          "unique_attr_name": "business_resource_id"
+        },
+        "5": {
+          "id": 5,
+          "name": "middleware",
+          "alias": "数据库与中间件",
+          "enabled": 1,
+          "unique_attr_id": 70,
+          "unique_attr_name": "middlewa_resource_id"
+        },
+        "6": {
+          "id": 6,
+          "name": "network_service",
+          "alias": "网络与外部服务",
+          "enabled": 1,
+          "unique_attr_id": 91,
+          "unique_attr_name": "network__resource_id"
+        },
+        "7": {
+          "id": 7,
+          "name": "credential",
+          "alias": "配置与凭据",
+          "enabled": 1,
+          "unique_attr_id": 113,
+          "unique_attr_name": "credenti_resource_id"
+        },
+        "8": {
+          "id": 8,
+          "name": "operation_runbook",
+          "alias": "运维操作",
+          "enabled": 1,
+          "unique_attr_id": 132,
+          "unique_attr_name": "operatio_resource_id"
+        },
+        "9": {
+          "id": 9,
+          "name": "data_check",
+          "alias": "核对与待办",
+          "enabled": 1,
+          "unique_attr_id": 147,
+          "unique_attr_name": "data_che_check_id"
+        },
+        "10": {
+          "id": 10,
+          "name": "monitoring_component",
+          "alias": "监控组件",
+          "enabled": 1,
+          "unique_attr_id": 70,
+          "unique_attr_name": "middlewa_resource_id"
+        },
+        "11": {
+          "id": 11,
+          "name": "business_system",
+          "alias": "业务系统/项目",
+          "enabled": 1,
+          "unique_attr_id": 206,
+          "unique_attr_name": "system_name"
+        },
+        "12": {
+          "id": 12,
+          "name": "runtime_platform",
+          "alias": "运行平台与基础服务",
+          "enabled": 1,
+          "unique_attr_id": 70,
+          "unique_attr_name": "middlewa_resource_id"
+        }
+      }
+    },
+    "relation_edges": {
+      "source": "reads/q4.out REL_CONSTRAINTS/RELTYPES（c_ci_type_relations 现读）",
+      "edges": [
+        {
+          "rel_id": 1,
+          "parent_type": 3,
+          "child_type": 4,
+          "relation_type_id": 1,
+          "relation_type": "承载",
+          "constraint": "0"
+        },
+        {
+          "rel_id": 2,
+          "parent_type": 3,
+          "child_type": 5,
+          "relation_type_id": 1,
+          "relation_type": "承载",
+          "constraint": "0"
+        },
+        {
+          "rel_id": 13,
+          "parent_type": 3,
+          "child_type": 6,
+          "relation_type_id": 1,
+          "relation_type": "承载",
+          "constraint": "0"
+        },
+        {
+          "rel_id": 12,
+          "parent_type": 3,
+          "child_type": 10,
+          "relation_type_id": 1,
+          "relation_type": "承载",
+          "constraint": "0"
+        },
+        {
+          "rel_id": 35,
+          "parent_type": 3,
+          "child_type": 12,
+          "relation_type_id": 1,
+          "relation_type": "承载",
+          "constraint": "0"
+        },
+        {
+          "rel_id": 18,
+          "parent_type": 4,
+          "child_type": 5,
+          "relation_type_id": 9,
+          "relation_type": "依赖",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 17,
+          "parent_type": 4,
+          "child_type": 6,
+          "relation_type_id": 7,
+          "relation_type": "调用",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 3,
+          "parent_type": 7,
+          "child_type": 3,
+          "relation_type_id": 2,
+          "relation_type": "关联凭据",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 4,
+          "parent_type": 7,
+          "child_type": 4,
+          "relation_type_id": 2,
+          "relation_type": "关联凭据",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 5,
+          "parent_type": 7,
+          "child_type": 5,
+          "relation_type_id": 2,
+          "relation_type": "关联凭据",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 6,
+          "parent_type": 7,
+          "child_type": 6,
+          "relation_type_id": 2,
+          "relation_type": "关联凭据",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 14,
+          "parent_type": 7,
+          "child_type": 10,
+          "relation_type_id": 2,
+          "relation_type": "关联凭据",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 36,
+          "parent_type": 7,
+          "child_type": 12,
+          "relation_type_id": 2,
+          "relation_type": "关联凭据",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 7,
+          "parent_type": 8,
+          "child_type": 3,
+          "relation_type_id": 3,
+          "relation_type": "运维手册",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 8,
+          "parent_type": 8,
+          "child_type": 4,
+          "relation_type_id": 3,
+          "relation_type": "运维手册",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 9,
+          "parent_type": 8,
+          "child_type": 5,
+          "relation_type_id": 3,
+          "relation_type": "运维手册",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 10,
+          "parent_type": 8,
+          "child_type": 6,
+          "relation_type_id": 3,
+          "relation_type": "运维手册",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 11,
+          "parent_type": 8,
+          "child_type": 7,
+          "relation_type_id": 3,
+          "relation_type": "运维手册",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 15,
+          "parent_type": 8,
+          "child_type": 10,
+          "relation_type_id": 3,
+          "relation_type": "运维手册",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 37,
+          "parent_type": 8,
+          "child_type": 12,
+          "relation_type_id": 3,
+          "relation_type": "运维手册",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 22,
+          "parent_type": 9,
+          "child_type": 3,
+          "relation_type_id": 10,
+          "relation_type": "待核验",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 23,
+          "parent_type": 9,
+          "child_type": 4,
+          "relation_type_id": 10,
+          "relation_type": "待核验",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 24,
+          "parent_type": 9,
+          "child_type": 5,
+          "relation_type_id": 10,
+          "relation_type": "待核验",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 26,
+          "parent_type": 9,
+          "child_type": 6,
+          "relation_type_id": 10,
+          "relation_type": "待核验",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 27,
+          "parent_type": 9,
+          "child_type": 7,
+          "relation_type_id": 10,
+          "relation_type": "待核验",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 28,
+          "parent_type": 9,
+          "child_type": 8,
+          "relation_type_id": 10,
+          "relation_type": "待核验",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 25,
+          "parent_type": 9,
+          "child_type": 10,
+          "relation_type_id": 10,
+          "relation_type": "待核验",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 38,
+          "parent_type": 9,
+          "child_type": 12,
+          "relation_type_id": 10,
+          "relation_type": "待核验",
+          "constraint": "0"
+        },
+        {
+          "rel_id": 19,
+          "parent_type": 10,
+          "child_type": 4,
+          "relation_type_id": 8,
+          "relation_type": "监测",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 20,
+          "parent_type": 10,
+          "child_type": 5,
+          "relation_type_id": 8,
+          "relation_type": "监测",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 21,
+          "parent_type": 10,
+          "child_type": 6,
+          "relation_type_id": 8,
+          "relation_type": "监测",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 29,
+          "parent_type": 11,
+          "child_type": 3,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 30,
+          "parent_type": 11,
+          "child_type": 4,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 31,
+          "parent_type": 11,
+          "child_type": 5,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 40,
+          "parent_type": 11,
+          "child_type": 6,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 33,
+          "parent_type": 11,
+          "child_type": 7,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 34,
+          "parent_type": 11,
+          "child_type": 8,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 32,
+          "parent_type": 11,
+          "child_type": 10,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 41,
+          "parent_type": 11,
+          "child_type": 11,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "2"
+        },
+        {
+          "rel_id": 39,
+          "parent_type": 11,
+          "child_type": 12,
+          "relation_type_id": 11,
+          "relation_type": "归属项目",
+          "constraint": "0"
+        }
+      ]
+    },
+    "server_ref_form": {
+      "source": "规范 v2.88 §3 L108（云实例ID 口径）＋2026-11-15 主进程库面现读（两张值表 UNION・deleted=0・活卡）",
+      "scope_note": "⛔ 拿 `*_server_ref` 通配加闸——同后缀只有两列且语义不同：attr48 只装所在服务器编号（与云无关），attr69 才是自建/云托管混装。一刀切＝602 格正常值全被拒。",
+      "attrs": {
+        "48": {
+          "name": "business_server_ref",
+          "alias": "所在服务器",
+          "bound_types": [
+            4
+          ],
+          "forms": [
+            "SRV"
+          ],
+          "observed_at_utc": "2026-11-15T13:47:00Z",
+          "observed": {
+            "total": 423,
+            "srv_form": 423,
+            "cloud_instance_id": 0,
+            "placeholder": 0
+          }
+        },
+        "69": {
+          "name": "middlewa_server_ref",
+          "alias": "所在服务器/实例",
+          "bound_types": [
+            5,
+            10,
+            12
+          ],
+          "forms": [
+            "SRV",
+            "cloud_instance_id"
+          ],
+          "observed_at_utc": "2026-11-15T13:47:00Z",
+          "observed": {
+            "total": 610,
+            "srv_form": 602,
+            "cloud_instance_id": 6,
+            "placeholder": 2
+          }
+        }
+      },
+      "srv_form_regex": "^SRV-[0-9]{4}$",
+      "cloud_instance_id_rule": "云托管资源＝填云实例ID，取本卡内网接入地址（attr74）首段整段；MSE 去 `-nacos-ans` 后缀；⛔ 公网域名首段（带 mo 等后缀者）；⛔ 定长截断（v2.88 §3・11-13 曾险截成 …ht5）",
+      "cloud_instance_id_seen": [
+        "<cloud-id:redacted>",
+        "<cloud-id:redacted>",
+        "<cloud-id:redacted>",
+        "<cloud-id:redacted>",
+        "<cloud-id:redacted>"
+      ],
+      "placeholder_rule": "查不到实例ID＝保留占位词并在备注写缺因（现读两例：OSS 无桶名 <cloud-id:redacted>・<id:redacted> 宿主未核 CI <num:redacted>）；占位不是脏值，⛔ 为过闸硬造实例ID",
+      "gate_policy": {
+        "mode": "observe_only",
+        "reason": "云前缀族不可能穷举（新产品会出现）＋2 格正常占位会被误伤；升格为硬闸的时机＝<id:redacted> 宿主补齐核验后由人工裁决，本件只给读数不给开关",
+        "apply_to": "new_writes"
+      }
+    },
+    "migrated_handle_forms": {
+      "source": "规范 v2.89 §16.5（新增硬禁条）＋2026-11-15 主进程库面现读（两张值表 UNION・deleted=0）＋生成脚本 ops/VeOps/<ip:redacted>/veops_external_credentials.py・影子记录 CI <num:redacted>—3133",
+      "what": "受控保管面**迁移句柄**＝明文被搬出 CMDB 后留在原格的指针串，⛔ 口令值本身；它是取回真值的唯一线索，改写它＝线索断掉（own-error #999 全案＝审计册 §297・登记表 R-REG819—R-REG821）",
+      "forms": [
+        {
+          "pattern": "\\[(?P<f>migrated:CRED-GOV-[0-9a-f]{16})\\]",
+          "kind": "gov_handle",
+          "len_range": [
+            27,
+            37
+          ],
+          "note": "影子记录 CRED-GOV-*（CI <num:redacted>—3133・record_status=已迁移待核对・全零边）"
+        },
+        {
+          "pattern": "\\[(?P<f>migrated:CRED-EXT-[0-9a-f]{16})\\]",
+          "kind": "ext_handle",
+          "len_range": [
+            27,
+            37
+          ],
+          "note": "生成脚本 attr_name('credential','resource_id') 形制 f\"CRED-EXT-{digest}\""
+        },
+        {
+          "pattern": "\\[(?P<f>migrated-to-controlled-value)\\]",
+          "kind": "generic_handle",
+          "len_range": [
+            28,
+            28
+          ],
+          "note": "无编号的通用句柄"
+        }
+      ],
+      "observed_at_utc": "2026-11-15T13:47:00Z",
+      "observed_cells": 37,
+      "observed_by_attr": {
+        "116": {
+          "name": "credenti_secret_value",
+          "cells": 8
+        },
+        "124": {
+          "name": "credenti_notes",
+          "cells": 6
+        },
+        "85": {
+          "name": "middlewa_notes",
+          "cells": 4
+        },
+        "112": {
+          "name": "credenti_resource_ref",
+          "cells": 3
+        },
+        "137": {
+          "name": "operatio_rollback",
+          "cells": 3
+        },
+        "157": {
+          "name": "data_che_notes",
+          "cells": 3
+        },
+        "51": {
+          "name": "business_public_url",
+          "cells": 2
+        },
+        "165": {
+          "name": "credenti_search_keywords",
+          "cells": 2
+        },
+        "50": {
+          "name": "business_private_ip",
+          "cells": 1
+        },
+        "62": {
+          "name": "business_notes",
+          "cells": 1
+        },
+        "75": {
+          "name": "middlewa_public_ip",
+          "cells": 1
+        },
+        "79": {
+          "name": "middlewa_operation",
+          "cells": 1
+        },
+        "135": {
+          "name": "operatio_commands",
+          "cells": 1
+        },
+        "164": {
+          "name": "middlewa_search_keywords",
+          "cells": 1
+        }
+      },
+      "observed_face": "两张值表 UNION・deleted=0・现读于 2026-11-15T15:00Z（<host:redacted>）",
+      "observed_note": "attr116 那 8 格＝本日误建八卡的密钥列（已标重复候选，句柄留在原格供人工过手，⛔ 清空＝D-54 口径下也不清，清了线索就没了）；句柄并非只落凭据列——14 列分布见上，含 IP／公网地址／关键词／回滚段等面，⛔ 拿列名白名单当豁免依据，只准按值形制判",
+      "gate_policy": {
+        "mode": "reject",
+        "applies_to": "明文普查 / 凭据归位 / 口令类批量改写 三类脚本的发车前预检",
+        "rule": "凡被 `(pwd|passwd|password|secret|token|密码|口令)[：:= ]{1,3}\\S{4,48}` 之类正则抓出的串，先与本节三形制对撞：命中＝句柄，⛔ 建卡・⛔ 改写・⛔ 计入明文；整格值＝句柄时同样豁免",
+        "why_reject": "句柄不是值，按值处理会同时造出废卡与断线（本日实测两条后果都真发生过）",
+        "raise_to_api": "第②层写闸门＝本条只作预检硬闸与普查豁免，⛔ 写路由拒句柄（在册列 ⛔ 只 29 格且合法）"
+      },
+      "readback_note": "判「是不是明文」的准尺＝该串能否被当作直接可用的凭据值使用；句柄⛔ 算"
+    },
+    "rule_count_claim": {
+      "total_approx": 98,
+      "note": "组级计数（草案的 D-72 豁免条已按 R-A5 移出闸值面、改记指针 1 条）"
+    }
+  },
+  "sensitive_columns": [
+    {
+      "attr_id": 116,
+      "name": "credenti_secret_value",
+      "alias": "配置值或密钥",
+      "source": "c_attributes 现读（11-15）",
+      "gate": "明文回显禁・写后只出 len+sha"
+    }
+  ],
+  "consistency_flags": [
+    {
+      "id": "DR-01",
+      "item": "attr 111 credenti_environment 库面 10 词（生产/UAT/测试/开发/演示/待确认/内网演示/正式/UAT/内网/内网-VPN）⇄ 文档 §4.2 L181 说 8 词",
+      "doc": "§4.2 L181",
+      "db": "c_choice_texts attr 111（q1 现读）",
+      "verdict": "已裁决（R-A4・2026-11-15）＝以库为准：本文件存库面 10 词，文档口径待同步（纸面一枪）"
+    },
+    {
+      "id": "DR-02",
+      "item": "导入唯一键 MANUAL 键形正则库内 re_check 未落（仅 attr25 SRV/attr132 OPS 两枚）；交接件写「正则 MANUAL-(APP|RB|NETWORK)-…」",
+      "doc": "交接件 L11・§13.8 L394",
+      "db": "c_attributes.re_check（q1 RECHECK 现读）",
+      "verdict": "键形＝纸面约定；api 层硬闸＝第②层要做的事；射程按 R-A2 编码"
+    },
+    {
+      "id": "DR-03",
+      "item": "历史整理标记现读词面含 D-66 四词之外脏词：待确认/参考待确认/已整理｜重复并档：已合并至 CI xxx/已迁移待核对；待摸排仍大量在册（H腿 b231-232 未执行）",
+      "doc": "§16.7 L752",
+      "db": "MARKER_DISTINCT（q4 现读，本件已带 observed_distinct_values）",
+      "verdict": "rules 记 allowed 四词＋现读分布并存；清洗批次照旧；词面闸门按 R-A1＝warn_only"
+    },
+    {
+      "id": "DR-04",
+      "item": "attr 106 network__source_key／attr 143 operatio_source_key 必填但未标 is_unique=1（其余 15 枚键列均 is_unique）",
+      "doc": "—",
+      "db": "UNIQUE_ATTRS vs REQUIRED（q1/q2 现读）",
+      "verdict": "已裁决（R-A3・2026-11-15）＝元数据写只登记待用户点头（见 pending_user_approval[0]）；⛔ 生成器自动改库、⛔ 假装已做"
+    },
+    {
+      "id": "DR-05",
+      "item": "record_status「封闭六词」（§4.2 L184）⇄ 库面 is_choice=0 自由文本无闸门；文档 v2.75 已自注＝书写口径",
+      "doc": "§4.2 L184・§16.7 L753",
+      "db": "attr_flags（q3 现读）",
+      "verdict": "rules 以「无闸门＋准用四词口径」双记；新写词面校验按 R-A1＝只 WARN 不拒"
+    },
+    {
+      "id": "DR-06",
+      "item": "attr 110 credenti_project＝hybrid：静态 31 词（含 待确认/待定项目-*/公司公共 等）＋choice_other 动态源并存；静态词表本体≠§13.8「项目代号六值」口径（那是键形段，不是词表）",
+      "doc": "§13.8 L394・§4.2 L183",
+      "db": "CHOICE_ATTRS/CHOICE_OTHER_JSON（q1/q3 现读）",
+      "verdict": "hybrid 如实标注；⛔ 把 31 词当项目代号段用"
+    },
+    {
+      "id": "DR-07",
+      "item": "lifecycle 六词文档顺序（运行中/已停用/已归档/归档候选/不纳管/待确认）⇄ 库面顺序（待确认/运行中/已停用/不纳管/归档候选/已归档）——集合一致，顺序漂移",
+      "doc": "§4.2 L182",
+      "db": "attr 166 词序（q1）",
+      "verdict": "rules 用库面顺序；顺序不影响闸门"
+    },
+    {
+      "id": "DR-08",
+      "item": "attr 42/86 存在小写 manual:<IP>:<…> 异形键（大写 MANUAL 形制之外的历史面；现读 cell 数见 rules.import_key.key_form_enforcement.lowercase_manual_variant）",
+      "doc": "§13.8 L394（只定义大写形制）",
+      "db": "KEYFORM_42/86（q5 现读）",
+      "verdict": "已裁决（R-A2・2026-11-15）＝新写拒绝、存量豁免（apply_to:\"new_writes\"），不再挂开放问题"
+    },
+    {
+      "id": "DR-09",
+      "item": "§13.8 L399 IP 并查写「attr 27/28/50/74」，库面内网IP列实为 27/50/74/94（28＝公网列、94＝network 内网地址）",
+      "doc": "§13.8 L399",
+      "db": "INDEX128_ATTRS（q3 现读 private_ip/private_address 名面）",
+      "verdict": "rules.dedup_three_checks.ip_join 双记（doc_attrs＋actual）"
+    },
+    {
+      "id": "DR-10",
+      "item": "四件套「每型四格」在 type 11（只有 lifecycle+evidence_status、无 source/checked_at）与 type 12（复用 middlewa 174-177、无独立 project/键列）面不完整",
+      "doc": "§4.3 L196・§13.8 四件套口径",
+      "db": "FOURPIECE_BIND（q3 现读）",
+      "verdict": "rules 按库面逐型如实绑定；速查卡⛔ 画成整齐四列"
+    },
+    {
+      "id": "DR-11",
+      "item": "§14.8 L606 把 T3 描述为「用途／责任人／更新口径」三段 ⇄ §16.1 L693 在册形制「事实；出处＝…；YYYY-MM-DD」——同一闸两个描述",
+      "doc": "§14.8 L606・§16.1 L693",
+      "db": "（闸在 text_face_guard.py 不在库）",
+      "verdict": "rules 采 §16.1（v2.60 收紧在册形制）；§14.8 措辞待 coord 裁（纸面）"
+    },
+    {
+      "id": "DR-12",
+      "item": "MANUAL-(APP|RB|NETWORK) 里 RB/NETWORK 两段：库面二段现读仅 63 面全=APP，86/106/143 面的 MANUAL 二段未逐一现读",
+      "doc": "交接件 L11",
+      "db": "MANUAL2_63（q5）",
+      "verdict": "已裁决（R-A2・2026-11-15）＝86/106/143 列 observe_only；在线刷腿时顺带补现读再谈升格"
+    },
+    {
+      "id": "DR-13",
+      "item": "规范 R-C1/R-C6 写「别名进 attr 25 搜索关键词」，库面 attr25＝server_resource_id（资源编号）；搜索关键词列全库只有 164 middlewa_search_keywords／165 credenti_search_keywords 两枚，type3/4/6/8/9 五型没有该列 ⇒ 这些型的别名与第二地址只能落非索引备注（LIKE 才命中，索引面检索查不到）",
+      "doc": "§13.12 L468（R-C1）・§13.12 L473（R-C6）",
+      "db": "c_attributes（11-15 现读：id=25 name=server_resource_id；keyword 列枚举只有 164/165；attr25 形制非 SRV-00xx 者 0 格＝纸面措辞未污染数据）",
+      "verdict": "纸面措辞待改＋是否给缺列五型补搜索关键词列＝元数据写（见 pending_user_approval[1]）；⛔ 本生成器自动改库"
+    },
+    {
+      "id": "DR-14",
+      "item": "c_attributes.is_password 全库 0 枚＝平台无「密文列」标志，⛔ 拿它做明文硬闸；凭据密钥实际列＝116 credenti_secret_value（is_index=0・is_choice=0），另 §8 L236 已禁把口令写进 search_keywords/notes/commands 等非凭据字段",
+      "doc": "§8 L236",
+      "db": "c_attributes where is_password=1 → 0 行（11-15 现读）",
+      "verdict": "第②层明文闸与执行器一律按列名白名单实现（116 等），本件记 secret_key_columns 清单；不依赖 is_password"
+    },
+    {
+      "id": "DR-15",
+      "item": "规范 v2.88 §3 用 `*_server_ref` 通配表述云实例ID 口径，库面现读同后缀只有两列且语义不同：attr48 business_server_ref（应用・423/423 全是 SRV 编号、与云无关）／attr69 middlewa_server_ref（中间件・平台・runtime・610 格＝SRV 602＋云实例ID 6＋占位 2）⇒ 规则与闸门必须逐列编码，⛔ 通配加闸（通配＝602 格正常值一起被拒）",
+      "doc": "§3 L108（v2.88）",
+      "db": "c_attributes/c_ci_type_attributes 绑定现读＋两张值表 UNION 普查（2026-11-15 主进程・读数见 rules.server_ref_form.attrs）",
+      "verdict": "已按列编码进 rules.server_ref_form（闸门 mode=observe_only）；纸面 §3 措辞待收窄一句（写死这两列），列入 doc_tables_to_regenerate 排队；占位 2 格（OSS 无桶名・<id:redacted> 宿主未核）属正常留痕，⛔ 为过闸造值"
+    }
+  ],
+  "doc_tables_to_regenerate": [
+    {
+      "where": "§4.2 枚举表 L181-185",
+      "what": "environment/lifecycle/evidence_status 在册取值行",
+      "why": "改为 rules.vocabulary 快照生成（DR-01/07 即现存漂移；attr111 行按 R-A4 同步）"
+    },
+    {
+      "where": "mcphub 内置速查卡（交接件③层）",
+      "what": "封闭词表/T1禁符/T2T3/票号/键形/四件套绑定",
+      "why": "全部从本文件渲染，⛔ 手抄第二套（D-37）"
+    },
+    {
+      "where": "预检脚本（api 校验器第②层）",
+      "what": "禁符区间集/词表闸门/160闸/键形正则/必填表",
+      "why": "同一 rules 消费；键形射程按 R-A2、词面闸门按 R-A1，⛔ 自造阈值"
+    },
+    {
+      "where": "§13.8 步4 靶面冻结「词面只准封闭六词」句",
+      "what": "词面口径",
+      "why": "六词⇄四词（D-66）⇄库面自由文本三处并写，速查卡以 rules.four_piece_set.record_status_markers 为准"
+    },
+    {
+      "where": "§16.7 L756-768 现值分布表",
+      "what": "数量快照",
+      "why": "文档自注 D-37 禁存快照——本件 observed_distinct_values 是带时刻的快照，仅供 rules 消费方，⛔ 回填文档"
+    },
+    {
+      "where": "§3 L108（v2.88 `*_server_ref` 句）",
+      "what": "云实例ID 口径的适用范围措辞",
+      "why": "通配写法过宽（DR-15）：收窄为「attr48 只准 SRV 编号；attr69 自建填 SRV／云托管填云实例ID」，取值口径本身不变，改完由 rules.server_ref_form 供机器读数"
+    }
+  ]
+}

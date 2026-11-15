@@ -1,8 +1,9 @@
 """Transport-agnostic MCP tool registration for the unified CMDB core.
 
 This module owns the *contract* between the MCP protocol and the core
-service.  It builds a low-level ``mcp.server.Server`` with exactly the seven
-stable tools named in :mod:`cmdb_mcp_adapter.core` and returns it wrapped in a
+service.  It builds a low-level ``mcp.server.Server`` with exactly the
+stable tools named in :mod:`cmdb_mcp_adapter.core` (seven primitives plus
+four intent-level ``cmdb_*`` tools) and returns it wrapped in a
 :class:`FastMCP` instance so that both the stdio launcher and (later) the
 Streamable HTTP launcher can consume the same object through the SDK's
 standard ``run`` / ``run_stdio_async`` entry points.
@@ -21,9 +22,11 @@ Design notes
   :class:`TextContent` with the JSON-serialized normalized model.  On
   failure ``isError=True`` and the text is exactly ``<category>: <message>``
   — the raw ``upstream_detail`` is never emitted to the client.
-* The ``list_tools`` handler advertises the seven tools with explicit JSON
+* The ``list_tools`` handler advertises the stable tools with explicit JSON
   schemas so that MCP clients can introspect the contract without calling
-  ``get_models``.
+  ``get_models``.  In read-only mode the mutating primitives and the three
+  intent write tools are dropped; ``cmdb_preflight_write`` (zero-write)
+  stays visible.
 """
 
 from __future__ import annotations
@@ -62,7 +65,7 @@ from cmdb_mcp_adapter.observability.correlation import bind_correlation_id, curr
 #: tool name and may change without breaking the tool contract.
 SERVER_NAME = "cmdb-mcp-adapter"
 
-#: Explicit JSON input schemas for the seven tools.  These mirror the
+#: Explicit JSON input schemas for the stable tools.  These mirror the
 #: ``CoreService`` method signatures and are the client-visible contract.
 _TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "get_models": {
@@ -126,6 +129,96 @@ _TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         },
         "required": ["model_name", "instance_id"],
     },
+    # ---- intent-level CMDB tools (layer-3, rules-gated) -----------------
+    # Parameter surfaces are deliberately closed (``additionalProperties:
+    # false``, string-only field values): no free-JSON passthrough into
+    # upstream.  Numeric limits live in the vendored rules file, not here.
+    "cmdb_preflight_write": {
+        "type": "object",
+        "properties": {
+            "model_name": {"type": "string"},
+            "fields": {
+                "type": "object",
+                "propertyNames": {"type": "string"},
+                "additionalProperties": {"type": "string"},
+            },
+            "ticket": {
+                "type": "string",
+                "description": "外线票号（rules.ticket：imp-* 形制、列宽上限、内部票面禁用）",
+            },
+            "ci_id": {
+                "type": ["integer", "string"],
+                "description": "更新预检时给出目标卡 id；省略＝建卡预检",
+            },
+        },
+        "required": ["model_name", "fields", "ticket"],
+        "additionalProperties": False,
+    },
+    "cmdb_create_card": {
+        "type": "object",
+        "properties": {
+            "model_name": {"type": "string"},
+            "ticket": {"type": "string"},
+            "fields": {
+                "type": "object",
+                "propertyNames": {"type": "string"},
+                "additionalProperties": {"type": "string"},
+            },
+            "relations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "relation_type_id": {"type": "integer", "minimum": 1},
+                        "second_ci_id": {"type": "integer", "minimum": 1},
+                        "direction": {"type": "string", "enum": ["out", "in"]},
+                    },
+                    "required": ["relation_type_id", "second_ci_id"],
+                    "additionalProperties": False,
+                },
+                "description": "建卡成功后可选建的边（out＝本卡为 first，in＝本卡为 second）",
+            },
+        },
+        "required": ["model_name", "ticket", "fields"],
+        "additionalProperties": False,
+    },
+    "cmdb_update_card": {
+        "type": "object",
+        "properties": {
+            "model_name": {"type": "string"},
+            "ci_id": {"type": ["integer", "string"]},
+            "ticket": {"type": "string"},
+            "fields": {
+                "type": "object",
+                "propertyNames": {"type": "string"},
+                "additionalProperties": {"type": "string"},
+            },
+        },
+        "required": ["model_name", "ci_id", "ticket", "fields"],
+        "additionalProperties": False,
+    },
+    "cmdb_link_relations": {
+        "type": "object",
+        "properties": {
+            "ticket": {"type": "string"},
+            "edges": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "relation_type_id": {"type": "integer", "minimum": 1},
+                        "first_ci_id": {"type": "integer", "minimum": 1},
+                        "second_ci_id": {"type": "integer", "minimum": 1},
+                    },
+                    "required": ["relation_type_id", "first_ci_id", "second_ci_id"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["ticket", "edges"],
+        "additionalProperties": False,
+    },
 }
 
 _TOOL_DESCRIPTIONS: dict[str, str] = {
@@ -136,6 +229,27 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "delete_instance": "Delete an existing instance of a model.",
     "search_instances": "Free-text search over a model's instances (cursor-paginated).",
     "get_relations": "List the relations originating from an instance.",
+    "cmdb_preflight_write": (
+        "意图级写前预检（零写副作用）：按 vendored 规则闸（票号/禁符/备注/索引列宽/"
+        "词表/四件套/密钥列）逐格判定，并现读目标卡现状做前后对照。返回 "
+        "verdict PASS|REJECT 与 cells 明细。不产生任何上游写请求。"
+    ),
+    "cmdb_create_card": (
+        "意图级建卡：闸全过才 POST /ci（票号独立参数传入，fields 内禁带 ticket_id）；"
+        "创建后逐格 SHA 回读 + 票数回读，返回 ci_id/cells_readback/ticket_records/"
+        "edges/warnings。POST 失败或超时会先按唯一键反查再报错——请勿盲目重放。"
+        "上游读面故障时建卡会被挡住（判重/名册读不到＝拒），属刻意设计。"
+    ),
+    "cmdb_update_card": (
+        "意图级改卡：闸全过才 PUT；回读三把尺＝逐格 SHA、票号记录行数、属性史行数"
+        "须等于改动格数（不等给 RECHECK 不给 PASS，防 200 空改）。"
+    ),
+    "cmdb_link_relations": (
+        "意图级连线：校验两端存活 + relation_type 在册后建边（空 body 提交，"
+        "类型由平台按两端类型对推断），返回新边 id。边写入不落平台操作记录"
+        "（票号黑洞），故返回面 ticket_records＝not_applicable 而非 0。"
+        "⛔ 删除边——摘线必须人工执行。"
+    ),
 }
 
 
@@ -274,24 +388,27 @@ def build_mcp_server(
     perform any network I/O; the adapter is only touched when a tool is
     actually called.
 
-    When ``readonly`` is ``True`` the three mutation tools
-    (``create_instance`` / ``update_instance`` / ``delete_instance``)
-    are removed from the advertised tool list and their dispatch
-    handlers are not registered, so an MCP client cannot even name
-    them.  Read tools are unaffected.
+    When ``readonly`` is ``True`` the mutation tools (the three
+    primitives plus the three intent write tools
+    ``cmdb_create_card`` / ``cmdb_update_card`` /
+    ``cmdb_link_relations``) are removed from the advertised tool list
+    and their dispatch handlers are not registered, so an MCP client
+    cannot even name them.  Read tools — including the zero-write
+    ``cmdb_preflight_write`` — are unaffected.
     """
     del settings  # The server is vendor-neutral; the adapter is already in service.
     advertised = READONLY_TOOL_NAMES if readonly else ALL_TOOL_NAMES
     lowlevel = Server(
         name=SERVER_NAME,
         instructions=(
-            "Unified CMDB adapter. The seven tool names below are a stable "
-            "public contract and must not change when new vendor adapters "
-            "are added."
+            "Unified CMDB adapter. The tool names below are a stable public "
+            "contract and must not change when new vendor adapters are "
+            "added. The seven primitives are frozen; the four cmdb_* intent "
+            "tools extend the surface additively."
         ),
     )
 
-    # ---- list_tools: advertise the seven stable tools --------------------
+    # ---- list_tools: advertise the stable tool set ----------------------
     # We register the raw handler directly on ``request_handlers`` rather than
     # through the ``Server.list_tools`` decorator because that decorator is
     # untyped in the SDK and would trip ``mypy --strict``.
@@ -385,16 +502,67 @@ def build_mcp_server(
         )
         return _ok_result(_to_text(result))
 
+    # ---- intent-level tool handlers (layer-3) -----------------------------
+    # ``verdict: REJECT`` is a *successful* tool result (isError=False): the
+    # gate did its job by declining to write.  Only contract/upstream
+    # failures surface as MCP errors via ``_wrap``.
+
+    async def _cmdb_preflight_write(arguments: dict[str, Any]) -> CallToolResult:
+        result = await _run_sync(
+            lambda: service.cmdb_preflight_write(
+                model_name=arguments.get("model_name", ""),
+                fields=arguments.get("fields") or {},
+                ticket=arguments.get("ticket", ""),
+                ci_id=arguments.get("ci_id"),
+            )
+        )
+        return _ok_result(_to_text(result))
+
+    async def _cmdb_create_card(arguments: dict[str, Any]) -> CallToolResult:
+        result = await _run_sync(
+            lambda: service.cmdb_create_card(
+                model_name=arguments.get("model_name", ""),
+                ticket=arguments.get("ticket", ""),
+                fields=arguments.get("fields") or {},
+                relations=arguments.get("relations"),
+            )
+        )
+        return _ok_result(_to_text(result))
+
+    async def _cmdb_update_card(arguments: dict[str, Any]) -> CallToolResult:
+        result = await _run_sync(
+            lambda: service.cmdb_update_card(
+                model_name=arguments.get("model_name", ""),
+                ci_id=arguments.get("ci_id", ""),
+                ticket=arguments.get("ticket", ""),
+                fields=arguments.get("fields") or {},
+            )
+        )
+        return _ok_result(_to_text(result))
+
+    async def _cmdb_link_relations(arguments: dict[str, Any]) -> CallToolResult:
+        result = await _run_sync(
+            lambda: service.cmdb_link_relations(
+                ticket=arguments.get("ticket", ""),
+                edges=arguments.get("edges") or [],
+            )
+        )
+        return _ok_result(_to_text(result))
+
     handlers: dict[str, Handler] = {
         "get_models": _wrap(_get_models, "get_models"),
         "get_instances": _wrap(_get_instances, "get_instances"),
         "search_instances": _wrap(_search_instances, "search_instances"),
         "get_relations": _wrap(_get_relations, "get_relations"),
+        "cmdb_preflight_write": _wrap(_cmdb_preflight_write, "cmdb_preflight_write"),
     }
     if not readonly:
         handlers["create_instance"] = _wrap(_create_instance, "create_instance")
         handlers["update_instance"] = _wrap(_update_instance, "update_instance")
         handlers["delete_instance"] = _wrap(_delete_instance, "delete_instance")
+        handlers["cmdb_create_card"] = _wrap(_cmdb_create_card, "cmdb_create_card")
+        handlers["cmdb_update_card"] = _wrap(_cmdb_update_card, "cmdb_update_card")
+        handlers["cmdb_link_relations"] = _wrap(_cmdb_link_relations, "cmdb_link_relations")
 
     # ---- single dispatcher handler (the SDK allows only one) -------------
     # We implement the CallToolRequest handler by hand rather than going

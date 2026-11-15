@@ -10,17 +10,18 @@ Public API (import from :mod:`cmdb_mcp_adapter.core`):
                 :class:`CMDBRelation`, :class:`Page`
     Errors:     :class:`CoreError`, :class:`ErrorCategory`, and the concrete
                 subclasses, plus :func:`normalize`
-    Adapter:    :class:`CMDBAdapter`
+    Adapter:    :class:`CMDBAdapter`, :class:`IntentAdapter`
     Service:    :class:`CoreService`
 
-The seven stable MCP tool names are exported as constants so that the tool
-layer and the documentation reference a single source of truth.  These names
-are public API and must not change.
+The eleven stable MCP tool names (seven primitives + four intent-level
+``cmdb_*`` tools) are exported as constants so that the tool layer and the
+documentation reference a single source of truth.  The original seven names
+are public API and must not change; the four intent tools are additive.
 """
 
 from __future__ import annotations
 
-from cmdb_mcp_adapter.core.adapter import CMDBAdapter, Filters
+from cmdb_mcp_adapter.core.adapter import CMDBAdapter, Filters, IntentAdapter
 from cmdb_mcp_adapter.core.errors import (
     AuthenticationError,
     AuthorizationError,
@@ -46,8 +47,9 @@ from cmdb_mcp_adapter.core.models import (
 )
 from cmdb_mcp_adapter.core.service import CoreService
 
-#: The seven stable MCP tool names.  These are part of the public contract:
-#: adding a new CMDB adapter must never change them.
+#: The stable MCP tool names.  The first seven are the original public
+#: contract; adding a new CMDB adapter must never change them.  The four
+#: ``cmdb_*`` intent tools (layer-3) extend the surface additively.
 TOOL_GET_MODELS = "get_models"
 TOOL_GET_INSTANCES = "get_instances"
 TOOL_CREATE_INSTANCE = "create_instance"
@@ -55,6 +57,10 @@ TOOL_UPDATE_INSTANCE = "update_instance"
 TOOL_DELETE_INSTANCE = "delete_instance"
 TOOL_SEARCH_INSTANCES = "search_instances"
 TOOL_GET_RELATIONS = "get_relations"
+TOOL_CMDB_PREFLIGHT_WRITE = "cmdb_preflight_write"
+TOOL_CMDB_CREATE_CARD = "cmdb_create_card"
+TOOL_CMDB_UPDATE_CARD = "cmdb_update_card"
+TOOL_CMDB_LINK_RELATIONS = "cmdb_link_relations"
 
 ALL_TOOL_NAMES: tuple[str, ...] = (
     TOOL_GET_MODELS,
@@ -64,6 +70,10 @@ ALL_TOOL_NAMES: tuple[str, ...] = (
     TOOL_DELETE_INSTANCE,
     TOOL_SEARCH_INSTANCES,
     TOOL_GET_RELATIONS,
+    TOOL_CMDB_PREFLIGHT_WRITE,
+    TOOL_CMDB_CREATE_CARD,
+    TOOL_CMDB_UPDATE_CARD,
+    TOOL_CMDB_LINK_RELATIONS,
 )
 
 #: The subset of :data:`ALL_TOOL_NAMES` that mutates CMDB state.  A
@@ -74,14 +84,27 @@ WRITE_TOOL_NAMES: tuple[str, ...] = (
     TOOL_DELETE_INSTANCE,
 )
 
-#: The read-only tool set: everything in :data:`ALL_TOOL_NAMES` except
-#: :data:`WRITE_TOOL_NAMES`.  Order is preserved from ``ALL_TOOL_NAMES``.
+#: The intent-level tools that mutate CMDB state.  ``cmdb_preflight_write``
+#: is deliberately NOT here: it performs zero writes and stays visible in
+#: read-only mode as a dry-run aid.
+INTENT_WRITE_TOOL_NAMES: tuple[str, ...] = (
+    TOOL_CMDB_CREATE_CARD,
+    TOOL_CMDB_UPDATE_CARD,
+    TOOL_CMDB_LINK_RELATIONS,
+)
+
+#: The read-only tool set: everything in :data:`ALL_TOOL_NAMES` except the
+#: mutating primitives and the intent writes.  Order is preserved from
+#: ``ALL_TOOL_NAMES``.
 READONLY_TOOL_NAMES: tuple[str, ...] = tuple(
-    name for name in ALL_TOOL_NAMES if name not in WRITE_TOOL_NAMES
+    name
+    for name in ALL_TOOL_NAMES
+    if name not in WRITE_TOOL_NAMES and name not in INTENT_WRITE_TOOL_NAMES
 )
 
 __all__ = [
     "ALL_TOOL_NAMES",
+    "INTENT_WRITE_TOOL_NAMES",
     "AuthenticationError",
     "AuthorizationError",
     "CMDBAdapter",
@@ -93,6 +116,7 @@ __all__ = [
     "CoreService",
     "ErrorCategory",
     "Filters",
+    "IntentAdapter",
     "InternalError",
     "MAX_PAGE_SIZE",
     "ModelField",
@@ -100,6 +124,10 @@ __all__ = [
     "Page",
     "RateLimitError",
     "READONLY_TOOL_NAMES",
+    "TOOL_CMDB_CREATE_CARD",
+    "TOOL_CMDB_LINK_RELATIONS",
+    "TOOL_CMDB_PREFLIGHT_WRITE",
+    "TOOL_CMDB_UPDATE_CARD",
     "TOOL_CREATE_INSTANCE",
     "TOOL_DELETE_INSTANCE",
     "TOOL_GET_INSTANCES",

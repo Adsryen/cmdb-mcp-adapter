@@ -5,6 +5,31 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [Unreleased] - 2026-11-15（⛔ 未发版・⛔ 未构建镜像・⛔ 未动 224）
+
+### Added
+
+* **规则闸 `rules_gate` 与 vendored 规则副本**：随包携带
+  `src/cmdb_mcp_adapter/rules/cmdb_rules.json`（ops 仓《CMDB录入规范》生成物的
+  只读副本，本次对齐 `sha256:2044f96a1f2951c7…`）。硬闸数值全部从该副本读数，
+  代码内无 `160/128/32` 字面量；副本与真源不一致时
+  `tests/test_rules_vendored.py` 判红（漂移报警器）。
+
+* **四个意图级工具**：`cmdb_preflight_write`（零写，出厂前自检）・
+  `cmdb_create_card`（建卡并自动补四件套证据列与票号）・`cmdb_update_card`・
+  `cmdb_link_relations`。参数面写死、`additionalProperties:false`，
+  ⛔ 自由 JSON 透传；`ticket` 为必填。
+
+### Changed
+
+* 工具总数 7 → 11；只读档（`READONLY_TOOL_NAMES`）4 → 5（预检零写故可见）。
+  三个意图写工具仅在非只读档注册，且后端须实现 `IntentAdapter` 协议才广播
+  （能力门控，mock 后端仍只见 7 个）。
+* 建边提交改为空 body `{relation_type_id, ticket_id}` ⛔ 上送——实测平台按两端
+  类型对推断关系类型，且边写入 `c_records` 一行不落（"票号黑洞"），故返回面
+  对边操作标 `ticket_records: not_applicable` 并在文案注明该缺陷由写闸门 p22
+  草案处理中。
+
 ## [0.2.9] - 2026-11-15（回仓补记：线上镜像实际构建于 2026-09-22）
 
 ### Fixed

@@ -16,8 +16,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from cmdb_mcp_adapter.core.adapter import CMDBAdapter, Filters
-from cmdb_mcp_adapter.core.errors import CoreError, ValidationError, normalize
+from cmdb_mcp_adapter.core.adapter import CMDBAdapter, Filters, IntentAdapter
+from cmdb_mcp_adapter.core.errors import (
+    CoreError,
+    UnsupportedOperationError,
+    ValidationError,
+    normalize,
+)
 from cmdb_mcp_adapter.core.models import MAX_PAGE_SIZE, CMDBInstance, CMDBModel, CMDBRelation, Page
 from cmdb_mcp_adapter.observability.correlation import log_operation
 
@@ -48,6 +53,93 @@ def _validate_page_size(page_size: object, field: str) -> int:
     # Clamp to the contract maximum so a hostile page_size cannot force an
     # unbounded response; the adapter still receives an in-contract value.
     return min(page_size, MAX_PAGE_SIZE)
+
+
+def _require_fields(fields: object, field: str) -> dict[str, Any]:
+    """Contract shape only: a mapping with non-empty string keys.  Value
+    legality (vocab, banned symbols, lengths) is the rules gate's job."""
+    payload = _require_dict(fields, field)
+    for key in payload:
+        if not isinstance(key, str) or not key.strip():
+            raise ValidationError(f"{field} keys must be non-empty strings")
+    return payload
+
+
+def _require_ticket_shape(ticket: object) -> str:
+    # Deliberately NOT length/format-validated here: the caps and forms come
+    # from the vendored rules file (rules_gate.check_ticket), so a contract
+    # copy of the number would be a second source of truth.
+    if not isinstance(ticket, str) or not ticket.strip():
+        raise ValidationError("ticket must be a non-empty string")
+    return ticket
+
+
+def _require_ci_id(ci_id: object) -> str:
+    if isinstance(ci_id, bool) or not isinstance(ci_id, (int, str)):
+        raise ValidationError("ci_id must be a positive integer or digit string")
+    text = str(ci_id)
+    if not text.isdigit():
+        raise ValidationError("ci_id must be a positive integer or digit string")
+    return text
+
+
+def _require_positive_int(value: object, label: str) -> int:
+    if isinstance(value, bool):
+        raise ValidationError(f"{label} must be a positive integer")
+    if isinstance(value, int):
+        if value <= 0:
+            raise ValidationError(f"{label} must be a positive integer")
+        return value
+    if isinstance(value, str) and value.isdigit() and value != "0":
+        return int(value)
+    raise ValidationError(f"{label} must be a positive integer or digit string")
+
+
+def _require_edges(edges: object) -> list[dict[str, Any]]:
+    if not isinstance(edges, list) or not edges:
+        raise ValidationError("edges must be a non-empty array")
+    out: list[dict[str, Any]] = []
+    for edge in edges:
+        payload = _require_dict(edge, "edges[]")
+        out.append(
+            {
+                "relation_type_id": _require_positive_int(
+                    payload.get("relation_type_id"), "edges[].relation_type_id"
+                ),
+                "first_ci_id": _require_positive_int(
+                    payload.get("first_ci_id"), "edges[].first_ci_id"
+                ),
+                "second_ci_id": _require_positive_int(
+                    payload.get("second_ci_id"), "edges[].second_ci_id"
+                ),
+            }
+        )
+    return out
+
+
+def _require_relations(relations: object) -> list[dict[str, Any]] | None:
+    if relations is None:
+        return None
+    if not isinstance(relations, list):
+        raise ValidationError("relations must be an array")
+    out: list[dict[str, Any]] = []
+    for rel in relations:
+        payload = _require_dict(rel, "relations[]")
+        direction = payload.get("direction", "out")
+        if direction not in ("out", "in"):
+            raise ValidationError("relations[].direction must be 'out' or 'in'")
+        out.append(
+            {
+                "relation_type_id": _require_positive_int(
+                    payload.get("relation_type_id"), "relations[].relation_type_id"
+                ),
+                "second_ci_id": _require_positive_int(
+                    payload.get("second_ci_id"), "relations[].second_ci_id"
+                ),
+                "direction": direction,
+            }
+        )
+    return out
 
 
 class CoreService:
@@ -170,6 +262,102 @@ class CoreService:
         return log_operation(
             lambda: _guarded(self._adapter.get_relations, model_name, instance_id),
             tool="get_relations",
+            adapter_name=type(self._adapter).__name__,
+        )
+
+    # -- intent-level CMDB tools (layer-3) -----------------------------------
+    # Contract validation for the four cmdb_* tools lives here; the rules
+    # gates themselves run inside the VeOps adapter (rules_gate + intent).
+    # Adapters without intent capability fail closed with
+    # UnsupportedOperationError *before* any upstream call.
+
+    def _require_intent(self) -> IntentAdapter:
+        if not isinstance(self._adapter, IntentAdapter):
+            raise UnsupportedOperationError(
+                f"adapter {type(self._adapter).__name__} does not provide the "
+                "intent-level cmdb_* tools (rules-gated writes are VeOps-only)"
+            )
+        return self._adapter
+
+    def cmdb_preflight_write(
+        self,
+        model_name: str,
+        fields: dict[str, Any],
+        ticket: str,
+        ci_id: int | str | None = None,
+    ) -> dict[str, Any]:
+        _require_non_empty(model_name, "model_name")
+        checked_fields = _require_fields(fields, "fields")
+        checked_ticket = _require_ticket_shape(ticket)
+        checked_ci_id = _require_ci_id(ci_id) if ci_id is not None else None
+        adapter = self._require_intent()
+        return log_operation(
+            lambda: _guarded(
+                adapter.cmdb_preflight_write,
+                model_name,
+                checked_fields,
+                checked_ticket,
+                checked_ci_id,
+            ),
+            tool="cmdb_preflight_write",
+            adapter_name=type(self._adapter).__name__,
+        )
+
+    def cmdb_create_card(
+        self,
+        model_name: str,
+        ticket: str,
+        fields: dict[str, Any],
+        relations: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        _require_non_empty(model_name, "model_name")
+        checked_ticket = _require_ticket_shape(ticket)
+        checked_fields = _require_fields(fields, "fields")
+        checked_relations = _require_relations(relations)
+        adapter = self._require_intent()
+        return log_operation(
+            lambda: _guarded(
+                adapter.cmdb_create_card,
+                model_name,
+                checked_ticket,
+                checked_fields,
+                checked_relations,
+            ),
+            tool="cmdb_create_card",
+            adapter_name=type(self._adapter).__name__,
+        )
+
+    def cmdb_update_card(
+        self,
+        model_name: str,
+        ci_id: int | str,
+        ticket: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        _require_non_empty(model_name, "model_name")
+        checked_ci_id = _require_ci_id(ci_id)
+        checked_ticket = _require_ticket_shape(ticket)
+        checked_fields = _require_fields(fields, "fields")
+        adapter = self._require_intent()
+        return log_operation(
+            lambda: _guarded(
+                adapter.cmdb_update_card, model_name, checked_ci_id, checked_ticket, checked_fields
+            ),
+            tool="cmdb_update_card",
+            adapter_name=type(self._adapter).__name__,
+        )
+
+    def cmdb_link_relations(
+        self,
+        ticket: str,
+        edges: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        checked_ticket = _require_ticket_shape(ticket)
+        checked_edges = _require_edges(edges)
+        adapter = self._require_intent()
+        return log_operation(
+            lambda: _guarded(adapter.cmdb_link_relations, checked_ticket, checked_edges),
+            tool="cmdb_link_relations",
             adapter_name=type(self._adapter).__name__,
         )
 

@@ -4,7 +4,7 @@ These tests drive the real MCP server (built by
 :func:`cmdb_mcp_adapter.server.mcp_server.build_mcp_server`) through the SDK's
 in-memory client session and assert:
 
-* the seven stable tool names are registered;
+* the stable tool names are registered (seven primitives + four intent tools);
 * ``get_models`` returns a non-empty, parseable result;
 * ``get_instances`` pagination semantics are preserved over the wire;
 * error tool calls return ``isError=True`` with a category-labelled message
@@ -38,6 +38,10 @@ EXPECTED_TOOL_NAMES = [
     "delete_instance",
     "search_instances",
     "get_relations",
+    "cmdb_preflight_write",
+    "cmdb_create_card",
+    "cmdb_update_card",
+    "cmdb_link_relations",
 ]
 
 
@@ -88,7 +92,7 @@ async def _session(server: Any) -> AsyncIterator[Any]:
 
 
 class TestToolRegistration:
-    def test_all_seven_tools_registered(self, default_server: Any) -> None:
+    def test_all_stable_tools_registered(self, default_server: Any) -> None:
         async def check() -> list[str]:
             async with _session(default_server) as cs:
                 tools = await cs.list_tools()
@@ -325,8 +329,10 @@ class TestErrorMapping:
         _run(check())
 
 # ---------------------------------------------------------------------------
-# Read-only mode (VEOPS_READONLY): the three mutation tools disappear from
-# the advertised list and cannot be invoked.
+# Read-only mode (VEOPS_READONLY): every mutating tool -- the three
+# primitives and the three intent write tools -- disappears from the
+# advertised list and cannot be invoked.  The zero-write
+# cmdb_preflight_write stays visible.
 # ---------------------------------------------------------------------------
 
 
@@ -349,7 +355,11 @@ class TestReadOnlyMode:
         assert "create_instance" not in check_run
         assert "update_instance" not in check_run
         assert "delete_instance" not in check_run
-        assert len(check_run) == 4
+        assert "cmdb_create_card" not in check_run
+        assert "cmdb_update_card" not in check_run
+        assert "cmdb_link_relations" not in check_run
+        assert "cmdb_preflight_write" in check_run
+        assert len(check_run) == 5
 
     def test_read_tool_still_works(self) -> None:
         server = self._build_readonly(MockAdapter())
@@ -374,8 +384,23 @@ class TestReadOnlyMode:
 
         assert _run(check()) is True
 
-    def test_default_keeps_all_seven_tools(self) -> None:
-        # The default (write-enabled) build must still advertise all seven.
+    def test_intent_write_tool_call_rejected(self) -> None:
+        # Intent writes are not dispatched at all in read-only mode: the
+        # dispatcher does not know their handler names.
+        server = self._build_readonly(MockAdapter())
+
+        async def check() -> bool:
+            async with _session(server) as cs:
+                r = await cs.call_tool(
+                    "cmdb_create_card",
+                    {"model_name": "server", "ticket": "imp-test-1", "fields": {"a": "b"}},
+                )
+                return r.isError is True
+
+        assert _run(check()) is True
+
+    def test_default_keeps_all_stable_tools(self) -> None:
+        # The default (write-enabled) build must still advertise all eleven.
         server = build_mcp_server(
             Settings(adapter="veops"), CoreService(MockAdapter())
         )

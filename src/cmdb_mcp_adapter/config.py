@@ -78,6 +78,13 @@ ENV_VEOPS_TOKEN = "VEOPS_TOKEN"
 #: adapter refuses any write with ``unsupported_operation``.  Default
 #: off (writes allowed) so local/sandbox tests keep exercising writes.
 ENV_VEOPS_READONLY = "VEOPS_READONLY"
+#: Override for the *vendored* rules file path used by the layer-3 intent
+#: tools (rules_gate.load_rules).  A plain filesystem path, not a secret;
+#: unset means "use the copy shipped inside the package", which is the
+#: supported production posture.  Deliberately not a Settings field: the
+#: rules gate reads it at load time so the rules file stays the single
+#: source of truth, outside the adapter's own config domain.
+ENV_CMDB_RULES_PATH = "CMDB_RULES_PATH"
 
 #: Every environment variable the adapter understands.  Tests and secret
 #: scans use this as the single source of truth.
@@ -95,6 +102,7 @@ ALL_ENV_VARS: frozenset[str] = frozenset(
         ENV_VEOPS_SECRET,
         ENV_VEOPS_TOKEN,
         ENV_VEOPS_READONLY,
+        ENV_CMDB_RULES_PATH,
     }
 )
 

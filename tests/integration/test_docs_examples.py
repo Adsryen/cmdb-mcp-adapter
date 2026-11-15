@@ -17,7 +17,7 @@ drifted from the runtime:
   credential rule (env-only credentials);
 * a **mock stdio smoke flow**: spawn ``cmdb-mcp stdio`` with
   ``MCP_ADAPTER=mock`` and drive a raw JSON-RPC
-  initialize → tools/list handshake, asserting the seven frozen tool
+  initialize → tools/list handshake, asserting the frozen stable tool
   names;
 * an **HTTP health smoke**: start ``cmdb-mcp http`` with the mock
   adapter on a free loopback port and GET ``/healthz`` / ``/readyz``,
@@ -54,8 +54,9 @@ DOC_FILES: tuple[Path, ...] = (
     REPO_ROOT / "CHANGELOG.md",
 ) + tuple(sorted((REPO_ROOT / "docs").glob("*.md")))
 
-#: The seven frozen MCP tool names (the stable public contract).
-SEVEN_TOOLS: frozenset[str] = frozenset(
+#: The frozen MCP tool names (the stable public contract: seven
+#: primitives plus the four intent-level cmdb_* tools).
+STABLE_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "get_models",
         "get_instances",
@@ -64,6 +65,10 @@ SEVEN_TOOLS: frozenset[str] = frozenset(
         "delete_instance",
         "search_instances",
         "get_relations",
+        "cmdb_preflight_write",
+        "cmdb_create_card",
+        "cmdb_update_card",
+        "cmdb_link_relations",
     }
 )
 
@@ -283,9 +288,9 @@ def _stdio_smoke(timeout: float = 30.0) -> list[str]:
         proc.wait(timeout=15)
 
 
-def test_mock_stdio_smoke_lists_seven_tools() -> None:
+def test_mock_stdio_smoke_lists_stable_tools() -> None:
     names = _stdio_smoke()
-    assert set(names) == SEVEN_TOOLS, f"unexpected tool list: {names}"
+    assert set(names) == STABLE_TOOL_NAMES, f"unexpected tool list: {names}"
 
 
 # --------------------------------------------------------------------------

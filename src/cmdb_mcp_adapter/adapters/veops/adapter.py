@@ -68,6 +68,7 @@ from typing import Any, cast
 
 from cmdb_mcp_adapter.adapters.veops import mapper
 from cmdb_mcp_adapter.adapters.veops.client import VeopsClient
+from cmdb_mcp_adapter.adapters.veops.intent import VeopsIntentOps
 from cmdb_mcp_adapter.core.adapter import Filters
 from cmdb_mcp_adapter.core.errors import (
     AuthorizationError,
@@ -148,10 +149,13 @@ class VeopsAdapter:
     VeOps 2.6.2.
 
     When constructed with ``readonly=True`` (the ``VEOPS_READONLY``
-    switch) the three write operations
-    (``create_instance`` / ``update_instance`` / ``delete_instance``)
+    switch) the write operations — the three primitives
+    (``create_instance`` / ``update_instance`` / ``delete_instance``) and
+    the three intent-level writes (``cmdb_create_card`` /
+    ``cmdb_update_card`` / ``cmdb_link_relations``) —
     raise :class:`UnsupportedOperationError` before any upstream call;
-    all read operations are unaffected.
+    all read operations (including the zero-write ``cmdb_preflight_write``)
+    are unaffected.
     """
 
     def __init__(self, client: VeopsClient, *, max_retries: int, readonly: bool = False) -> None:
@@ -170,6 +174,9 @@ class VeopsAdapter:
         # (same 60 s TTL); ``None`` = never fetched.
         self._relation_names: tuple[str, ...] | None = None
         self._relation_names_fetched_at: float | None = None
+        # lazily built intent-ops facade (layer-3 tools); holds its own
+        # liveness cache for the lifetime of this adapter instance.
+        self._intent_ops: VeopsIntentOps | None = None
 
     # -- internals ---------------------------------------------------------
     def _read(self, fn: Callable[[], Any], *, operation: str) -> Any:
@@ -682,6 +689,53 @@ class VeopsAdapter:
             data=dict(sent_data),
             metadata=None,
         )
+
+    # -- intent-level operations (layer-3, rules-gated) ---------------------
+    # These back the cmdb_preflight_write / cmdb_create_card /
+    # cmdb_update_card / cmdb_link_relations tools.  The gate logic lives
+    # in :mod:`cmdb_mcp_adapter.adapters.veops.intent` and
+    # :mod:`cmdb_mcp_adapter.rules_gate`; the primitives above are NOT
+    # touched by them (backward compatibility of the 3 direct write tools
+    # is a hard requirement).
+
+    def _intent(self) -> VeopsIntentOps:
+        if self._intent_ops is None:
+            self._intent_ops = VeopsIntentOps(self._client, self)
+        return self._intent_ops
+
+    def cmdb_preflight_write(
+        self,
+        model_name: str,
+        fields: dict[str, Any],
+        ticket: str,
+        ci_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Zero-write verdict over the rules gates + current-state reads."""
+        return self._intent().preflight_write(model_name, fields, ticket, ci_id=ci_id)
+
+    def cmdb_create_card(
+        self,
+        model_name: str,
+        ticket: str,
+        fields: dict[str, Any],
+        relations: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Rules-gated create with readback rulers and optional edges."""
+        return self._intent().create_card(model_name, ticket, fields, relations=relations)
+
+    def cmdb_update_card(
+        self,
+        model_name: str,
+        ci_id: str,
+        ticket: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Rules-gated update with the three post-write rulers."""
+        return self._intent().update_card(model_name, ci_id, ticket, fields)
+
+    def cmdb_link_relations(self, ticket: str, edges: list[dict[str, Any]]) -> dict[str, Any]:
+        """Verify endpoints and relation types, then create edges (never delete)."""
+        return self._intent().link_relations(ticket, edges)
 
 
 def _filter_instances(

@@ -28,12 +28,12 @@ class TestCreateApp:
         # The returned object is the FastMCP instance.  We assert it has the
         # expected shape: a low-level server with our registered handlers.
         assert server is not None
-        # The low-level server must have the seven stable tool handlers.
+        # The low-level server must have a CallTool dispatcher handler.
         lowlevel = server._mcp_server
         assert "CallToolRequest" in [
             t.__name__ for t in lowlevel.request_handlers
         ]
-        # The list_tools handler must advertise the seven tools.
+        # The list_tools handler must advertise the stable tool set.
         names = _list_tool_names(lowlevel)
         assert names == [
             "get_models",
@@ -43,6 +43,10 @@ class TestCreateApp:
             "delete_instance",
             "search_instances",
             "get_relations",
+            "cmdb_preflight_write",
+            "cmdb_create_card",
+            "cmdb_update_card",
+            "cmdb_link_relations",
         ]
 
     def test_unknown_adapter_raises_configuration_error(self) -> None:
@@ -115,11 +119,15 @@ class TestCreateAppReadOnly:
         assert "create_instance" not in names
         assert "update_instance" not in names
         assert "delete_instance" not in names
+        assert "cmdb_create_card" not in names
+        assert "cmdb_update_card" not in names
+        assert "cmdb_link_relations" not in names
         assert names == [
             "get_models",
             "get_instances",
             "search_instances",
             "get_relations",
+            "cmdb_preflight_write",
         ]
 
     def test_veops_not_readonly_keeps_all_tools(self, monkeypatch) -> None:
@@ -138,6 +146,10 @@ class TestCreateAppReadOnly:
             "delete_instance",
             "search_instances",
             "get_relations",
+            "cmdb_preflight_write",
+            "cmdb_create_card",
+            "cmdb_update_card",
+            "cmdb_link_relations",
         ]
 
     def test_mock_ignores_veops_readonly_env(self, monkeypatch) -> None:
@@ -147,5 +159,5 @@ class TestCreateAppReadOnly:
         settings = Settings(adapter="mock")
         server = create_app(settings)
         names = _list_tool_names(server._mcp_server)
-        assert len(names) == 7
+        assert len(names) == 11
 

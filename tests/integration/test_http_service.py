@@ -9,7 +9,7 @@ shared server object from ``create_app``.
 Covered:
 
 * the full MCP protocol handshake (initialize → tools/list → tools/call)
-  over ``POST /mcp``, asserting the seven fixed tool names;
+  over ``POST /mcp``, asserting the fixed stable tool names;
 * the inbound auth policy (``0.0.0.0`` + token → 401 without/with a wrong
   token; correct token → 200; loopback without token → 200);
 * ``/healthz`` (always 200) and ``/readyz`` (200 valid / 503 with redacted
@@ -36,8 +36,9 @@ from cmdb_mcp_adapter.config import Settings, UpstreamSettings
 from cmdb_mcp_adapter.server.app import create_app
 from cmdb_mcp_adapter.server.asgi import build_asgi_app
 
-#: The seven fixed tool names (the stable public contract).
-SEVEN_TOOLS: frozenset[str] = frozenset(
+#: The fixed tool names (the stable public contract: seven primitives
+#: plus the four intent-level cmdb_* tools).
+STABLE_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "get_models",
         "get_instances",
@@ -46,6 +47,10 @@ SEVEN_TOOLS: frozenset[str] = frozenset(
         "delete_instance",
         "search_instances",
         "get_relations",
+        "cmdb_preflight_write",
+        "cmdb_create_card",
+        "cmdb_update_card",
+        "cmdb_link_relations",
     }
 )
 
@@ -139,13 +144,13 @@ def _run_asgi(coro: Any, settings: Settings | None = None) -> Any:
         asyncio.set_event_loop(None)
 
 
-def test_mcp_full_handshake_and_seven_tools() -> None:
+def test_mcp_full_handshake_and_stable_tools() -> None:
     """initialize → tools/list → tools/call over POST /mcp."""
     summary = _run_asgi(
         lambda app: _drive_mcp_session(app, tools_call=True)
     )
     assert summary["protocol_version"]
-    assert set(summary["tools"]) == SEVEN_TOOLS, f"got {summary['tools']}"
+    assert set(summary["tools"]) == STABLE_TOOL_NAMES, f"got {summary['tools']}"
     result = summary["call"]
     assert result.isError is False, f"call failed: {result.content}"
 
@@ -153,7 +158,7 @@ def test_mcp_full_handshake_and_seven_tools() -> None:
 def test_loopback_without_token_allows_mcp() -> None:
     """A loopback bind without a configured token must allow /mcp."""
     summary = _run_asgi(lambda app: _drive_mcp_session(app))
-    assert set(summary["tools"]) == SEVEN_TOOLS
+    assert set(summary["tools"]) == STABLE_TOOL_NAMES
 
 
 def test_non_loopback_requires_token() -> None:
@@ -227,7 +232,7 @@ def test_non_loopback_token_allows_full_session() -> None:
     finally:
         loop.close()
         asyncio.set_event_loop(None)
-    assert set(summary["tools"]) == SEVEN_TOOLS
+    assert set(summary["tools"]) == STABLE_TOOL_NAMES
 
 
 def test_healthz_always_200() -> None:
