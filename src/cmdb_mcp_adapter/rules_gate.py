@@ -745,6 +745,7 @@ def check_fields(
     *,
     for_create: bool,
     live_values_by_field: Mapping[str, Sequence[str]] | None = None,
+    channel: str = "intent",
 ) -> dict[str, list[GateIssue]]:
     """Whole-payload gate run keyed by field ('' = ticket/payload-level issues).
 
@@ -758,14 +759,24 @@ def check_fields(
     for field, value in fields.items():
         issues: list[GateIssue] = []
         if is_sensitive(field, rules):
-            issues.append(
-                GateIssue(
-                    SEVERITY_REJECT,
-                    "SENSITIVE_WRITE_FORBIDDEN",
-                    f"列 '{field}' 为敏感列（rules.sensitive_columns）＝⛔ 明文值走本通道"
-                    "（写侧拒；读侧一律 mask 为 len=N sha256:<12位>）",
+            if channel == "raw":
+                issues.append(
+                    GateIssue(
+                        SEVERITY_WARN,
+                        "SENSITIVE_WRITE_FORBIDDEN",
+                        f"列 '{field}' 为敏感列＝raw 通道放行（票号+改前存档必须齐；"
+                        "读侧仍一律 mask）",
+                    )
                 )
-            )
+            else:
+                issues.append(
+                    GateIssue(
+                        SEVERITY_REJECT,
+                        "SENSITIVE_WRITE_FORBIDDEN",
+                        f"列 '{field}' 为敏感列（rules.sensitive_columns）＝⛔ 明文值走本通道"
+                        "（写侧拒；读侧一律 mask 为 len=N sha256:<12位>）",
+                    )
+                )
         else:
             live = (
                 live_values_by_field.get(field)

@@ -103,6 +103,37 @@ class VeopsIntentOps:
     # CoreService; these methods raise CoreError subclasses on bad shape)
     # ------------------------------------------------------------------
 
+    def raw_write_gate(
+        self,
+        model_name: str,
+        data: dict[str, Any],
+        *,
+        for_create: bool,
+    ) -> None:
+        """0.4.0: raw create/update share the field gate with the intent channel.
+
+        Sensitive columns degrade to WARN only on this channel (the raw leg is
+        the sanctioned credential write path, backed by ticket + pre-change
+        archive); every other REJECT stands.  Raises ``ValidationError`` listing
+        stable codes + field names — never payload values.
+        """
+        fields = {k: v for k, v in data.items() if k != "ticket_id"}
+        ticket = data.get("ticket_id")
+        issues_by_field = rg.check_fields(
+            model_name, fields, ticket, self._rules,
+            for_create=for_create,
+            live_values_by_field=self._live_values_for(fields),
+            channel="raw",
+        )
+        rejects = sorted(
+            {f"{issue.code}({name or 'payload'})"
+             for name, issues in issues_by_field.items()
+             for issue in issues
+             if issue.severity == rg.SEVERITY_REJECT}
+        )
+        if rejects:
+            raise ValidationError("raw write gate REJECT: " + ", ".join(rejects))
+
     def preflight_write(
         self,
         model_name: str,

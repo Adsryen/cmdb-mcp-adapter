@@ -35,6 +35,16 @@ from tests.adapters._fakes import (
 
 API = "/api/v0.1"
 
+# Full valid credential create payload for the 0.4.0 raw write gate.
+CRED_FULL = {
+    "credenti_key_id": "ACC-9999",
+    "credenti_lifecycle_status": "运行中",
+    "credenti_evidence_status": "当前运行态已验证",
+    "credenti_evidence_source": "ssh实测",
+    "credenti_evidence_checked_at": "2026-11-20",
+    "ticket_id": "imp-selftest-20261120-t1",
+}
+
 # The deployment's ci_types dictionary (id + name + alias only — the
 # real payload carries more; the mapper only needs these).
 CI_TYPES = {
@@ -437,7 +447,7 @@ class TestWriteMethods:
             require_signature=False,  # body-signed POSTs: verify below
         )
         adapter, client = build_adapter(transport)
-        inst = adapter.create_instance("credential", {"credenti_key_id": "ACC-9999"})
+        inst = adapter.create_instance("credential", dict(CRED_FULL))
         assert inst.instance_id == "900"
         (req,) = [r for r in transport.requests if r.method == "POST"]
         import json as _json
@@ -445,6 +455,7 @@ class TestWriteMethods:
         body = _json.loads(req.content)
         assert body["ci_type"] == 7
         assert body["credenti_key_id"] == "ACC-9999"
+        assert body["ticket_id"] == "imp-selftest-20261120-t1"
         # The credentials ride in the JSON body and the signature covers
         # the body's scalar values (the upstream reads request.values =
         # request.json for a JSON-body write).
@@ -475,20 +486,25 @@ class TestWriteMethods:
             require_signature=False,
         )
         adapter, _ = build_adapter(transport)
-        inst = adapter.create_instance("credential", {"credenti_key_id": "ACC-9999"})
+        inst = adapter.create_instance("credential", dict(CRED_FULL))
         assert inst.instance_id == "901"
         assert inst.data["credenti_key_id"] == "ACC-9999"
 
     def test_update_instance(self) -> None:
         transport = _RecordingTransport(
             {
+                ("GET", f"{API}/ci_types"): CI_TYPES,
                 ("PUT", f"{API}/ci/514"): {"ci_id": 514},
             },
             {},
             require_signature=False,
         )
         adapter, client = build_adapter(transport)
-        inst = adapter.update_instance("quick_reference", "514", {"quick_re_title": "X"})
+        inst = adapter.update_instance(
+            "quick_reference",
+            "514",
+            {"quick_re_title": "X", "ticket_id": "imp-selftest-20261120-t1"},
+        )
         assert inst.instance_id == "514"
         (req,) = [r for r in transport.requests if r.method == "PUT"]
         import json as _json
@@ -511,17 +527,19 @@ class TestWriteMethods:
             require_signature=False,
         )
         adapter, _ = build_adapter(transport)
-        inst = adapter.create_instance("credential", {"credenti_key_id": "ACC-9999"})
+        inst = adapter.create_instance("credential", dict(CRED_FULL))
         assert inst.instance_id == "3262"
 
-    def test_delete_instance(self) -> None:
+    def test_delete_instance(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("VEOPS_ALLOW_DELETE", "1")
         transport = _RecordingTransport(
             {("DELETE", f"{API}/ci/514"): (204, None)}, {}
         )
         adapter, _ = build_adapter(transport)
         adapter.delete_instance("quick_reference", "514")  # must not raise
 
-    def test_delete_405_maps_to_unsupported(self) -> None:
+    def test_delete_405_maps_to_unsupported(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("VEOPS_ALLOW_DELETE", "1")
         transport = _RecordingTransport(
             {("DELETE", f"{API}/ci/514"): (405, {"error": "method not allowed"})},
             {},
@@ -564,7 +582,7 @@ class TestRetryPolicy:
         )
         adapter, _ = build_adapter(transport, max_retries=5)
         with pytest.raises(Exception) as exc:
-            adapter.create_instance("credential", {"credenti_key_id": "x"})
+            adapter.create_instance("credential", dict(CRED_FULL))
         # Exactly one attempt to the POST: writes are never retried.
         post_reqs = [r for r in transport.requests if r.method == "POST"]
         assert len(post_reqs) == 1
@@ -699,7 +717,7 @@ class TestReadOnlyMode:
         )
         adapter = VeopsAdapter(build_client(transport), max_retries=0)
         inst = adapter.create_instance(
-            "quick_reference", {"quick_re_title": "new"}
+            "credential", dict(CRED_FULL)
         )
         assert inst.instance_id == "3263"
 

@@ -62,6 +62,7 @@ Contract notes (verified 2026-08, see ``docs/veops-adapter.md``):
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Callable
 from typing import Any, cast
@@ -72,6 +73,7 @@ from cmdb_mcp_adapter.adapters.veops.intent import VeopsIntentOps
 from cmdb_mcp_adapter.core.adapter import Filters
 from cmdb_mcp_adapter.core.errors import (
     AuthorizationError,
+    ConfigurationError,
     CoreError,
     NotFoundError,
     UnsupportedOperationError,
@@ -471,6 +473,7 @@ class VeopsAdapter:
     def create_instance(self, model_name: str, data: dict[str, Any]) -> CMDBInstance:
         self._check_writable("create_instance")
         type_id = self._resolve_type_id(model_name)
+        self._intent().raw_write_gate(model_name, data, for_create=True)
         body: dict[str, Any] = {"ci_type": type_id}
         body.update(data)
         payload = self._client.request("POST", _PATH_CI, json_body=body)
@@ -482,8 +485,10 @@ class VeopsAdapter:
         instance_id: str,
         data: dict[str, Any],
     ) -> CMDBInstance:
-        _ = model_name  # the upstream PUT is addressed by numeric ci id only
         self._check_writable("update_instance")
+        # gate needs a known model; PUT itself addresses the numeric ci id
+        self._resolve_type_id(model_name)
+        self._intent().raw_write_gate(model_name, data, for_create=False)
         payload = self._client.request(
             "PUT", _PATH_INSTANCE.format(instance_id=instance_id), json_body=dict(data)
         )
@@ -492,6 +497,11 @@ class VeopsAdapter:
     def delete_instance(self, model_name: str, instance_id: str) -> None:
         _ = model_name
         self._check_writable("delete_instance")
+        if os.environ.get("VEOPS_ALLOW_DELETE", "").strip().lower() not in ("1", "true", "yes"):
+            raise ConfigurationError(
+                "delete_instance 默认停用（0.4.0）：下线只改生命周期状态⛔ 物理删行；"
+                "确需真删在部署侧显式设 VEOPS_ALLOW_DELETE=1"
+            )
         try:
             self._client.request("DELETE", _PATH_INSTANCE.format(instance_id=instance_id))
         except ValidationError as exc:

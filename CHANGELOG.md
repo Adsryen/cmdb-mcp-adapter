@@ -5,6 +5,20 @@ in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 The project aims for [Semantic Versioning](https://semver.org/)
 (major.minor.patch).
 
+## [0.4.0] - 2026-11-20
+
+运维主力通道改为「MCP＋面层」后，三个 raw 写工具不再裸奔：
+
+- Added: `raw_write_gate`——`create_instance` / `update_instance` 与 intent 工具
+  共用同一字段闸（票号形制／禁符／T2 闸／四件套／词表含现查），仅敏感列在
+  raw 通道降级为 WARN（凭据腿是设计内明文通道，靠票号＋改前存档兜底）。
+- Added: `delete_instance` 默认停用（治理口径＝下线只改生命周期状态⛔物理删行）；
+  确需真删在部署侧显式设 `VEOPS_ALLOW_DELETE=1` 才放行。
+- Changed: `update_instance` 现在先 `_resolve_type_id(model_name)` 校验模型名
+  （未知模型＝ValidationError，不再静默按 id 直写）。
+- Tests: `tests/adapters/test_raw_gate.py`（闸拒／敏感 WARN 放行／删默认停）＋
+  既有写测试补齐票号与四件套字段。461 passed 5 skipped。
+
 ## [0.3.0] - 2026-11-16
 
 ### Added
